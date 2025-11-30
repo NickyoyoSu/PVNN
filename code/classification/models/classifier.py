@@ -14,7 +14,9 @@ from lib.models.resnet import (
     Lorentz_resnet50
 )
 
-from lib.custom_layers import PVManifold, PVManifoldMLR,  PoincareBall as CustomPoincareBall, HyperbolicMLR, HNNPlusPlusMLR, KleinManifold, KleinManifoldMLR, EuclideanMLR
+from lib.custom_layers import PoincareBall as CustomPoincareBall, HyperbolicMLR, HNNPlusPlusMLR, KleinManifold, KleinManifoldMLR, EuclideanMLR
+from lib.pv.manifold import PVManifold
+from lib.pv.layers import PVManifoldMLR
 from lib.poincare.layers import GaneaPoincareMLR
 
 EUCLIDEAN_RESNET_MODEL = {
