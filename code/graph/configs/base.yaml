@@ -1,0 +1,15 @@
+base:
+  lr: 0.015
+  epochs: 2000
+  batch_size: 128
+  dataset: disease
+  dropout: 0.0
+  weight_decay: 0.0
+  hidden_dim: 16
+  curvature: 0.5
+  num_runs: 5
+  print_interval: 100
+  use_bias: true
+  patience: 200
+  inner_act: none
+  outer_act: tangent

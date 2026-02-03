@@ -1,48 +1,21 @@
-cora:
-  lr: 0.05
-  dropout: 0.6
-  weight_decay: 0.0005
-  curvature: 0.3
-  epochs: 2000
-  batch_size: 128
-  hidden_dim: 16
-  inner_act: "none"
-  outer_act: "tangent"
-  patience: 200
-
-pubmed:
-  lr: 0.05
-  dropout: 0.6
-  weight_decay: 0.0005
-  curvature: 0.3
-  epochs: 2000
-  batch_size: 128
-  hidden_dim: 16
-  inner_act: "none"
-  outer_act: "tangent"
-  patience: 200
-
-disease:
-  lr: 0.01
-  dropout: 0.4
-  weight_decay: 0.0005
-  curvature: 0.3
-  epochs: 2000
-  batch_size: 128
-  hidden_dim: 16
-  inner_act: "none"
-  outer_act: "tangent"
-  patience: 200
-
-airport:
-  lr: 0.01
-  dropout: 0.4
-  weight_decay: 0.0005
-  curvature: 0.3
-  epochs: 2000
-  batch_size: 128
-  hidden_dim: 16
-  inner_act: "none"
-  outer_act: "tangent"
-  patience: 200
-
+datasets:
+  pubmed:
+    lr: 0.05
+    dropout: 0.6
+    weight_decay: 0.0005
+    curvature: 1.0
+  disease:
+    lr: 0.01
+    dropout: 0.4
+    weight_decay: 0.0005
+    curvature: 0.3
+  cora:
+    lr: 0.01
+    dropout: 0.6
+    weight_decay: 0.0005
+    curvature: 0.5
+  airport:
+    lr: 0.01
+    dropout: 0.4
+    weight_decay: 0.0005
+    curvature: 0.3
