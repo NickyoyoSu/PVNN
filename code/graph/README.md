@@ -1,7 +1,6 @@
 # Graph Learning (PVNN) Experiments
 
-This folder is a cleaned, reproducible layout for the Section 6.3 graph learning
-experiments and ablations.
+This folder is for the Section 6.3 graph learning experiments and ablations.
 
 ## Structure
 
