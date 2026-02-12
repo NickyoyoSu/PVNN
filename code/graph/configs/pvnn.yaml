@@ -12,15 +12,4 @@ pvnn:
   use_bias: true
   patience: 200
   inner_act: none
-  outer_act: direct_tanh
-  no_proj_exp: false
-  use_mid_bn: false
-  use_mid_log_euc_bn: false
-  gyrobn:
-    use_euclid_stats: false
-    use_gyro_midpoint: true
-    clamp_factor: 3.0
-    var_floor: 0.1
-    max_tan_norm: 20.0
-    scalar_sinh_clip: 20.0
-    use_post_gain: false
+  outer_act: tangent

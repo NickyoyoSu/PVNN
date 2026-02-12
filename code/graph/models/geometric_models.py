@@ -10,8 +10,7 @@ from lib.math_utils import artanh, tanh
 from lib.HNN_manifold import PoincareBall, HNNLayer, HyperbolicMLR, HNNPlusPlusMLR, HNNPlusPlusLayer
 import torch.nn.init as init
 import sys
-from lib.gyrobn_pv import GyroBNPV
-from lib.PV_manifold import PVManifold as PVManifoldGyro
+
 ACT_MAP = {
     "identity": nn.Identity,
     "tanh"    : nn.Tanh,
@@ -35,11 +34,11 @@ def _resolve_pv_curvature(manifold, default=-1.0):
     return default
 def check_nan(tensor, location_name):
     if torch.isnan(tensor).any():
-        print(f"*** 发现NaN值! 位置: {location_name} ***")
-        print(f"张量形状: {tensor.shape}")
+        print(f"*** NaN detected at: {location_name} ***")
+        print(f"Tensor shape: {tensor.shape}")
         nan_indices = torch.nonzero(torch.isnan(tensor))
         if nan_indices.numel() > 0:
-            print(f"NaN索引: {nan_indices[:10]}...")           
+            print(f"NaN indices: {nan_indices[:10]}...")           
         sys.exit(1)          
 
 class GeometricModel(nn.Module):
@@ -65,10 +64,10 @@ class GeometricModel(nn.Module):
             self.manifold = PoincareBall()
             
             if self.model_type == 'hnn++':
-                print("为 HNN++ 构建参数化版本与可学习曲率")
+                print("Building parametrized HNN++ with learnable curvature")
                 self.c = c
             else:
-                print("为 HNN 构建标准版本")
+                print("Building standard HNN")
                 self.c = c
                 
             self.manifold.c = self.c
@@ -92,40 +91,17 @@ class GeometricModel(nn.Module):
         elif self.model_type == 'pvnn':
             k = _as_negative_curvature(c)
             self.manifold = PVManifold(k=k)
-            self.tan_bn = nn.BatchNorm1d(self.in_features, affine=False, eps=1e-3)
             setattr(self.manifold, 'projx', self.manifold.proj)
-            self.gyro_manifold = PVManifoldGyro(k=k)
-            self.gyro_manifold = PVManifoldGyro(k=k)
             
             self.layers = nn.Sequential(
                  CustomHyperbolicLayer(self.in_features, self.hidden_dim, self.manifold, p_drop, inner_act=self.inner_act, outer_act=self.outer_act, linear_type=self.linear_type),
                  CustomHyperbolicLayer(self.hidden_dim, self.hidden_dim, self.manifold, p_drop, inner_act=self.inner_act, outer_act=self.outer_act, linear_type=self.linear_type)
               )
-            self.use_mid_bn = False
-            self.use_mid_log_euc_bn = False
-            self.no_proj_exp = False
-
-            self.mid_tan_bn = nn.BatchNorm1d(self.hidden_dim, affine=False, eps=1e-3)
-            self.bn_mid = GyroBNPV(
-                manifold=self.gyro_manifold,
-                shape=[self.hidden_dim],
-                track_running_stats=True,
-                momentum=0.1,
-                use_euclid_stats=False,
-                use_gyro_midpoint=False, clamp_factor=10.0,
-                print_stats=False,
-                use_post_gain=False,                               
-                var_floor=1e-2,                              
-                max_tan_norm=20.0,                                
-                scalar_sinh_clip=20.0
-
-            )
-            
             self.classifier = PVManifoldMLR(_resolve_pv_curvature(self.manifold), self.hidden_dim, n_classes)
 
         elif self.model_type == 'lnn':
             self.manifold = self._get_manifold(model_type, c)
-            print(f"为 {model_type} 构建双层架构，使用 {self.manifold.name} 流形")
+            print(f"Building a two-layer {model_type} architecture on {self.manifold.name} manifold")
             
             setattr(self.manifold, 'projx', self.manifold.proj)
             
@@ -144,7 +120,7 @@ class GeometricModel(nn.Module):
         else:
             
             self.manifold = self._get_manifold(model_type, c)
-            print(f"为 {model_type} 构建双层架构，使用 {self.manifold.name} 流形")
+            print(f"Building a two-layer {model_type} architecture on {self.manifold.name} manifold")
             
             setattr(self.manifold, 'projx', self.manifold.proj)
             
@@ -157,76 +133,61 @@ class GeometricModel(nn.Module):
 
     def _get_manifold(self, model_type, c):
         if model_type == 'lnn':
-            print("使用 Lorentz 流形")
+            print("Using Lorentz manifold")
             return LorentzManifold(c=c, in_features=self.in_features)
         elif model_type == 'knn':
-            print("使用 Klein 流形")
+            print("Using Klein manifold")
             return KleinManifold(c=c)
         else:
-            raise ValueError(f"未知的模型类型: {model_type}")
+            raise ValueError(f"Unknown model type: {model_type}")
 
     def forward(self, x):
-        check_nan(x, "模型输入")
+        check_nan(x, "model input")
         
         if self.model_type == 'fc':
             h = self.activation(self.layer1(x))
-            check_nan(h, "FC层激活后")
+            check_nan(h, "after FC activation")
             return self.classifier(h)
         elif self.model_type in ['hnn', 'hnn++', 'lnn', 'knn']:
             x_tan = self.manifold.proj_tan0(x, c=self.manifold.c)
-            check_nan(x_tan, "proj_tan0后")
+            check_nan(x_tan, "after proj_tan0")
             
             x_hyp = self.manifold.expmap0(x_tan, c=self.manifold.c)
-            check_nan(x_hyp, "expmap0后")
+            check_nan(x_hyp, "after expmap0")
             
             x_hyp = self.manifold.proj(x_hyp, c=self.manifold.c)
-            check_nan(x_hyp, "proj后")
+            check_nan(x_hyp, "after proj")
             
             h = self.layers[0](x_hyp)       
-            check_nan(h, "第一层后")
+            check_nan(h, "after first layer")
             
             h = self.layers[1](h)       
-            check_nan(h, "第二层后")
+            check_nan(h, "after second layer")
             
             h_tangent = self.manifold.logmap0(h, c=self.manifold.c)
-            check_nan(h_tangent, "logmap0后")
+            check_nan(h_tangent, "after logmap0")
             
             logits = self.classifier(h_tangent)
-            check_nan(logits, "分类器输出")
+            check_nan(logits, "classifier output")
             
             return logits
             
         elif self.model_type == 'pvnn':
             x_tan = self.manifold.proj_tan0(x, c=self.manifold.c)
-            check_nan(x_tan, "proj_tan0后")
-            if getattr(self, 'no_proj_exp', False):
-                x_hyp = x_tan
-            else:
-                x_hyp = self.manifold.expmap0(x_tan, c=self.manifold.c)
-                check_nan(x_hyp, "expmap0后")
-                x_hyp = self.manifold.proj(x_hyp, c=self.manifold.c)
-                check_nan(x_hyp, "proj后")
+            check_nan(x_tan, "after proj_tan0")
+            x_hyp = self.manifold.expmap0(x_tan, c=self.manifold.c)
+            check_nan(x_hyp, "after expmap0")
+            x_hyp = self.manifold.proj(x_hyp, c=self.manifold.c)
+            check_nan(x_hyp, "after proj")
  
             h = self.layers[0](x_hyp)       
-            check_nan(h, "第一层后")
-            if getattr(self, 'use_mid_bn', False) and not getattr(self, 'no_proj_exp', False):
-                h = self.bn_mid(h)
-                check_nan(h, "GyroBN后")
-            elif getattr(self, 'use_mid_log_euc_bn', False) and not getattr(self, 'no_proj_exp', False):
-                t_mid = self.manifold.logmap0(h, c=self.manifold.c)
-                check_nan(t_mid, "中间logmap0后")
-                t_mid = self.mid_tan_bn(t_mid)
-                check_nan(t_mid, "中间欧式BN后")
-                h = self.manifold.expmap0(t_mid, c=self.manifold.c)
-                check_nan(h, "中间expmap0后")
-                h = self.manifold.proj(h, c=self.manifold.c)
-                check_nan(h, "中间proj后")
+            check_nan(h, "after first layer")
 
             h = self.layers[1](h)       
-            check_nan(h, "第二层后")
+            check_nan(h, "after second layer")
              
             logits = self.classifier(h)
-            check_nan(logits, "分类器输出")
+            check_nan(logits, "classifier output")
             return logits
 
 
@@ -255,19 +216,19 @@ class CustomHyperbolicLayer(nn.Module):
         elif outer_act == 'tangent':
             self.activation = CustomHyperbolicActivation(manifold, nn.Tanh())
         elif outer_act == 'direct':
-            print(f"使用非切空间直接ReLU")
+            print(f"Using direct ReLU outside tangent space")
             self.activation = ManifoldDirectReLU(manifold)
         elif outer_act == 'direct_tanh':
             self.activation = ManifoldTanh(manifold)
         else:
-            raise ValueError(f"未知的激活函数类型: {outer_act}")
+            raise ValueError(f"Unknown activation type: {outer_act}")
         
     
     def forward(self, x):
-        check_nan(x, f"CustomHyperbolicLayer输入")
+        check_nan(x, f"CustomHyperbolicLayer input")
         if self.inner_pre_activation is not None and self._linear_type != 'pv_lfc':
             x = self.inner_pre_activation(x)
-            check_nan(x, f"内置前置激活后")
+            check_nan(x, f"after built-in pre-activation")
         h = self.linear(x)
         if torch.isnan(h).any():
             with torch.no_grad():
@@ -278,10 +239,10 @@ class CustomHyperbolicLayer(nn.Module):
                       " h(min,max,mean)=", _stat(h), " type=", getattr(self, "_linear_type", "unknown"))
                 if getattr(self, "_linear_type", "") == 'pvfc':
                     print("[Hint] Check PV_manifold.PVFC.forward for z clamping and diagnostics.")
-        check_nan(h, f"CustomHyperbolicLinear后")
+        check_nan(h, f"after CustomHyperbolicLinear")
         
         h = self.activation(h)
-        check_nan(h, f"激活后")
+        check_nan(h, f"after activation")
         
         return h
     
@@ -330,11 +291,11 @@ class CustomHyperbolicLinear(nn.Module):
             init.zeros_(self.bias)
 
     def forward(self, x):
-        check_nan(x, "CustomHyperbolicLinear输入")
+        check_nan(x, "CustomHyperbolicLinear input")
 
         if self.activation is not None:
             t = self.manifold.logmap0(x, c=self.c)
-            check_nan(t, "logmap0后")
+            check_nan(t, "after logmap0")
 
             if torch.isnan(self.weight).any() or torch.isinf(self.weight).any():
                 with torch.no_grad():
@@ -346,15 +307,15 @@ class CustomHyperbolicLinear(nn.Module):
                     W = F.dropout(self.weight, self.dropout, training=self.training)
                     if torch.isnan(W).any() or torch.isinf(W).any():
                         W = torch.nan_to_num(W, nan=0.0, posinf=1e6, neginf=-1e6).clamp_(-1e3, 1e3)
-            check_nan(W, "权重dropout后")
+            check_nan(W, "after weight dropout")
 
             t = t @ W.t()
             if self.use_bias:
                 t = t + self.bias
-            check_nan(t, "切空间线性(+bias)后")
+            check_nan(t, "after tangent-space linear (+bias)")
 
             t = self.activation(t)
-            check_nan(t, "切空间激活后")
+            check_nan(t, "after tangent-space activation")
 
             y = self.manifold.expmap0(t, c=self.c)
 
@@ -371,29 +332,29 @@ class CustomHyperbolicLinear(nn.Module):
                 drop_weight = F.dropout(self.weight, self.dropout, training=self.training)
                 if torch.isnan(drop_weight).any() or torch.isinf(drop_weight).any():
                     drop_weight = torch.nan_to_num(drop_weight, nan=0.0, posinf=1e6, neginf=-1e6).clamp_(-1e3, 1e3)
-        check_nan(drop_weight, "权重dropout后")
+        check_nan(drop_weight, "after weight dropout")
 
         mv = self.manifold.pv_gyro_matvec(drop_weight, x, self.c)
-        check_nan(mv, "mobius_matvec后")
+        check_nan(mv, "after mobius_matvec")
 
         res = self.manifold.proj(mv, self.c)
-        check_nan(res, "结果proj后")
+        check_nan(res, "after result proj")
 
         if self.use_bias:
             bias_tan = self.manifold.proj_tan0(self.bias.view(1, -1), self.c)
-            check_nan(bias_tan, "bias proj_tan0后")
+            check_nan(bias_tan, "bias after proj_tan0")
 
             hyp_bias = self.manifold.expmap0(bias_tan, self.c)
-            check_nan(hyp_bias, "hyp_bias expmap0后")
+            check_nan(hyp_bias, "hyp_bias after expmap0")
 
             hyp_bias = self.manifold.proj(hyp_bias, self.c)
-            check_nan(hyp_bias, "hyp_bias proj后")
+            check_nan(hyp_bias, "hyp_bias after proj")
 
             res = self.manifold.pv_gyro_add(res, hyp_bias, self.c)
-            check_nan(res, "mobius_add后")
+            check_nan(res, "after mobius_add")
 
             res = self.manifold.proj(res, self.c)
-            check_nan(res, "最终proj后")
+            check_nan(res, "after final proj")
 
         return res
 
@@ -410,26 +371,26 @@ class CustomHyperbolicActivation(nn.Module):
             self.c_in = self.manifold.k
             self.c_out = self.manifold.k
         else:
-            print(f"警告: {manifold.__class__.__name__} 没有找到曲率参数 'c' 或 'k'，使用默认值 1.0")
+            print(f"Warning: {manifold.__class__.__name__} has no curvature parameter 'c' or 'k'; using default 1.0")
             self.c_in = 1.0
             self.c_out = 1.0
 
     def forward(self, x):
         x = self.manifold.proj(x, c=self.c_in)
         logmap_result = self.manifold.logmap0(x, c=self.c_in)
-        check_nan(logmap_result, "logmap0结果")
+        check_nan(logmap_result, "logmap0 result")
         
         activated = self.activation(logmap_result)
-        check_nan(activated, "激活函数后")
+        check_nan(activated, "after activation function")
         
         xt = self.manifold.proj_tan0(activated, c=self.c_out)
-        check_nan(xt, "proj_tan0后")
+        check_nan(xt, "after proj_tan0")
         
         expmap_result = self.manifold.expmap0(xt, c=self.c_out)
-        check_nan(expmap_result, "expmap0结果")
+        check_nan(expmap_result, "expmap0 result")
         
         final_result = self.manifold.proj(expmap_result, c=self.c_out)
-        check_nan(final_result, "最终proj后")
+        check_nan(final_result, "after final proj")
         
         return final_result
     
@@ -456,47 +417,10 @@ def get_curvature_for_model(model_type):
         return 1.0
     return 1.0       
 def build_model(model_type, dim=16, hidden_dim=None, n_classes=2, p_drop=0.5, c=1.0, weight_decay=0, inner_act = 'none', outer_act = 'tangent', linear_type: str = 'pvfc'):
-    print(f"构建模型: {model_type}")
+    print(f"Building model: {model_type}")
     if hidden_dim is None:
         hidden_dim = dim
         
     return GeometricModel(model_type=model_type, dim=dim, hidden_dim=hidden_dim, 
                          n_classes=n_classes, c=c, p_drop=p_drop, 
                          inner_act=inner_act, outer_act=outer_act, linear_type=linear_type)
-
-def build_pvnn_frechet_sweep(dim=16, hidden_dim=None, n_classes=2, p_drop=0.5, c=1.0,
-                             iters_list=None, inner_act='none', outer_act='tangent', bn_mode: str = 'gyro', linear_type: str = 'pvfc'):
-    if hidden_dim is None:
-        hidden_dim = dim
-    if iters_list is None:
-        iters_list = [1, 2, 5, 10, 'inf']
-
-    models = {}
-    for it in iters_list:
-        max_iter = -1 if (isinstance(it, str) and it.lower() in ['inf', 'infinite']) else int(it)
-        m = GeometricModel(
-            model_type='pvnn', dim=dim, hidden_dim=hidden_dim, n_classes=n_classes,
-            c=c, p_drop=p_drop, final_act='softplus', inner_act=inner_act, outer_act=outer_act, linear_type=linear_type
-        )
-        if hasattr(m, 'bn_mid'):
-            if bn_mode == 'gyro':
-                if hasattr(m, 'use_mid_bn'):
-                    m.use_mid_bn = True
-                if hasattr(m, 'use_mid_log_euc_bn'):
-                    m.use_mid_log_euc_bn = False
-                m.bn_mid.use_gyro_midpoint = False
-                m.bn_mid.use_euclid_stats = False
-                m.bn_mid.max_iter = max_iter
-            elif bn_mode == 'log_euc':
-                if hasattr(m, 'use_mid_bn'):
-                    m.use_mid_bn = False
-                if hasattr(m, 'use_mid_log_euc_bn'):
-                    m.use_mid_log_euc_bn = True
-            elif bn_mode == 'none':
-                if hasattr(m, 'use_mid_bn'):
-                    m.use_mid_bn = False
-                if hasattr(m, 'use_mid_log_euc_bn'):
-                    m.use_mid_log_euc_bn = False
-        models[max_iter] = m
-    return models
-

@@ -10,10 +10,10 @@ datasets:
     weight_decay: 0.0005
     curvature: 0.3
   cora:
-    lr: 0.01
+    lr: 0.05
     dropout: 0.6
     weight_decay: 0.0005
-    curvature: 0.5
+    curvature: 1.0
   airport:
     lr: 0.01
     dropout: 0.4
