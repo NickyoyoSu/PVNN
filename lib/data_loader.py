@@ -8,7 +8,11 @@ import os
 import sys
 
 
-DATA_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data"))
+_DATA_ROOT_CANDIDATES = [
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data")),
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "code", "graph", "data")),
+]
+DATA_ROOT = next((p for p in _DATA_ROOT_CANDIDATES if os.path.isdir(p)), _DATA_ROOT_CANDIDATES[0])
 
 
 

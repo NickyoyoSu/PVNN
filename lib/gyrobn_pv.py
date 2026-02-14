@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import math
-from .PV_manifold import PVManifold
+from .pv.graph_ops import PVManifold
 
 
 class GyroBNPV(nn.Module):

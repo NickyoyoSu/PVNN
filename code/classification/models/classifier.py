@@ -14,7 +14,9 @@ from lib.models.resnet import (
     Lorentz_resnet50
 )
 
-from lib.custom_layers import PoincareBall as CustomPoincareBall, HyperbolicMLR, HNNPlusPlusMLR, KleinManifold, KleinManifoldMLR, EuclideanMLR
+from lib.poincare.hnn_manifold import HyperbolicMLR, HNNPlusPlusMLR
+from lib.klein.manifold import KleinManifold, KleinManifoldMLR
+from lib.Euclidean.mlr import EuclideanMLR
 from lib.pv.manifold import PVManifold
 from lib.pv.layers import PVManifoldMLR
 from lib.poincare.layers import GaneaPoincareMLR
@@ -128,4 +130,3 @@ class ResNetClassifier(nn.Module):
         x = self.decoder(x)
         return x
         
-

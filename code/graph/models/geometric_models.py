@@ -2,12 +2,18 @@ import torch
 import torch.nn as nn
 import math
 import torch.nn.functional as F
-from lib.PV_manifold import PVManifold, PVManifoldMLR, PVFC
-from lib.Lorentz_manifold import LorentzManifold, LorentzManifoldMLR
+from lib.pv.graph_ops import PVManifold, PVManifoldMLR, PVFC
+from lib.lorentz.graph_manifold import LorentzManifold, LorentzManifoldMLR
 from lib.lorentz_layers import LorentzLinear, LorentzActivation, LorentzDropout, LorentzLayerNorm
-from lib.Klein_manifold import KleinManifold, KleinManifoldMLR
+from lib.klein.manifold import KleinManifold, KleinManifoldMLR
 from lib.math_utils import artanh, tanh
-from lib.HNN_manifold import PoincareBall, HNNLayer, HyperbolicMLR, HNNPlusPlusMLR, HNNPlusPlusLayer
+from lib.poincare.hnn_manifold import (
+    PoincareBall,
+    HNNLayer,
+    HyperbolicMLR,
+    HNNPlusPlusMLR,
+    HNNPlusPlusLayer,
+)
 import torch.nn.init as init
 import sys
 
@@ -27,7 +33,7 @@ def _as_negative_curvature(value):
 def _resolve_pv_curvature(manifold, default=-1.0):
     k_attr = getattr(manifold, "k", None)
     if k_attr is not None:
-        return k_attr
+        return k_attr if k_attr < 0 else -abs(k_attr)
     c_attr = getattr(manifold, "c", None)
     if c_attr is not None:
         return -abs(c_attr)
@@ -125,8 +131,24 @@ class GeometricModel(nn.Module):
             setattr(self.manifold, 'projx', self.manifold.proj)
             
             self.layers = nn.Sequential(
-                CustomHyperbolicLayer(self.in_features, self.hidden_dim, self.manifold, p_drop, use_direct_relu),
-                CustomHyperbolicLayer(self.hidden_dim, self.hidden_dim, self.manifold, p_drop, use_direct_relu)
+                CustomHyperbolicLayer(
+                    self.in_features,
+                    self.hidden_dim,
+                    self.manifold,
+                    p_drop,
+                    inner_act=self.inner_act,
+                    outer_act=self.outer_act,
+                    linear_type=self.linear_type,
+                ),
+                CustomHyperbolicLayer(
+                    self.hidden_dim,
+                    self.hidden_dim,
+                    self.manifold,
+                    p_drop,
+                    inner_act=self.inner_act,
+                    outer_act=self.outer_act,
+                    linear_type=self.linear_type,
+                ),
             )
             
             self.classifier = KleinManifoldMLR(self.manifold, self.hidden_dim, n_classes)
@@ -238,7 +260,7 @@ class CustomHyperbolicLayer(nn.Module):
                 print("[CustomHyperbolicLayer] NaN after linear; x(min,max,mean)=", _stat(x),
                       " h(min,max,mean)=", _stat(h), " type=", getattr(self, "_linear_type", "unknown"))
                 if getattr(self, "_linear_type", "") == 'pvfc':
-                    print("[Hint] Check PV_manifold.PVFC.forward for z clamping and diagnostics.")
+                    print("[Hint] Check lib.pv.graph_ops.PVFC.forward for z clamping and diagnostics.")
         check_nan(h, f"after CustomHyperbolicLinear")
         
         h = self.activation(h)

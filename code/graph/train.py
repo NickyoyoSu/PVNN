@@ -138,7 +138,7 @@ def run_single_experiment(model_type, config, train_loader, test_loader, input_d
 
 def main():
     # Paper main graph experiment (Section 6.3 / Appendix C.3)
-    model_types = ["knn", "hnn", "hnn++", "lnn", "pvnn"]
+    model_types = ["pvnn"]
     datasets_to_run = ["disease", "airport", "pubmed", "cora"]
 
     common_config = {

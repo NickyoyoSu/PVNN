@@ -5,14 +5,14 @@ This folder is for the Section 6.3 graph learning main experiments.
 ## Structure
 
 - `configs/` baseline configs extracted from the original experiments
-- `data/` dataset root (place raw files here)
+- `../data/` dataset root (place raw files here)
 - `lib/` data loaders and utilities
 - `models/` manifolds and model definitions
 - `train.py` main training entry
 
 ## Data layout
 
-Create subfolders under `data/`:
+Create subfolders under the repo root `data/`:
 
 - `data/cora/`
 - `data/pubmed/`
