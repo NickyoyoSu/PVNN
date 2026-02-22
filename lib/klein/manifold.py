@@ -1,5 +1,4 @@
 import torch
-from lib import Lorentz_manifold as lm
 import torch.nn as nn
 import torch.nn.functional as F
 import math            

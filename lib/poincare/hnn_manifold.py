@@ -1,3 +1,6 @@
+"""Compatibility wrapper for Poincare/HNN graph manifold ops."""
+
+from .hnn_manifold import *  # noqa: F401,F403
 import math
 
 import torch

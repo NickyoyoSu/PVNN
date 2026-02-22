@@ -4,7 +4,7 @@ import math
 import torch.nn.functional as F
 from lib.pv.graph_ops import PVManifold, PVManifoldMLR, PVFC
 from lib.lorentz.graph_manifold import LorentzManifold, LorentzManifoldMLR
-from lib.lorentz_layers import LorentzLinear, LorentzActivation, LorentzDropout, LorentzLayerNorm
+from lib.lorentz.lorentz_layers import LorentzLinear, LorentzActivation, LorentzDropout, LorentzLayerNorm
 from lib.klein.manifold import KleinManifold, KleinManifoldMLR
 from lib.math_utils import artanh, tanh
 from lib.poincare.hnn_manifold import (
