@@ -149,7 +149,7 @@ class EuclideanCNN(nn.Module):
 # =================== PV Hyperbolic CNN ===================
 from lib.pv.manifold import PVManifold
 from lib.pv.blocks_1d import get_pv_convolution_block
-from lib.pv.layers_1d import PVFullyConnected, PVReLU, PVConv1d
+from lib.pv.layers_1d import PVReLU, PVConv1d
 from lib.pv.mlr import PVManifoldMLR
 
 # =================== Poincaré Hyperbolic CNN ===================

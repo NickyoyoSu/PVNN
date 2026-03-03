@@ -401,30 +401,3 @@ class PVFC(nn.Module):
             b_hyp = self.M.exp0(b_tan)
             y = self.M.gyro_add(y, b_hyp)
         return y
-
-# =====================================================================
-#                     Tangent block (log0 → Euclid → exp0)
-# =====================================================================
-class PV_TangentBlock(nn.Module):
-    def __init__(self, c: float, in_dim: int, out_dim: int,
-                 bias: bool=True, tau_clip: float | None=None,
-                 nonlin: T.Callable[[torch.Tensor], torch.Tensor]=F.relu):
-        super().__init__()
-        self.M = PVManifold(c)
-        self.lin = nn.Linear(in_dim, out_dim, bias=bias)
-        self.nonlin = nonlin
-        self.tau_clip = tau_clip
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        v = self.M.log0(x)
-        v = self.lin(v)
-        if self.nonlin is not None:
-            v = self.nonlin(v)
-        if self.tau_clip is not None:
-            r = v.norm(dim=-1, keepdim=True).clamp_min(_eps(v))
-            v = torch.clamp(self.tau_clip / r, max=1.0) * v
-        return self.M.exp0(v)
-
-# =====================================================================
-#        Optional ambient (w, σ) head (same semantics; c/s version)
-# =====================================================================

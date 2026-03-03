@@ -397,39 +397,3 @@ class PVFC(nn.Module):
             y = self.manifold.gyro_add(y, b_hyp)
             
         return y
-
-
-# =====================================================================
-#                     Tangent block (Log -> Linear -> Exp)
-# =====================================================================
-class PV_TangentBlock(nn.Module):
-    """
-    Standard manifold operation: Map to tangent space, apply Euclidean linear, map back.
-    """
-    def __init__(self, k: float, in_dim: int, out_dim: int,
-                 bias: bool=True, tau_clip: float | None=None,
-                 nonlin: T.Callable[[torch.Tensor], torch.Tensor]=F.relu):
-        super().__init__()
-        self.M = PVManifold(k)
-        self.lin = nn.Linear(in_dim, out_dim, bias=bias)
-        self.nonlin = nonlin
-        self.tau_clip = tau_clip
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # 1. Log map at origin
-        v = self.M.log0(x)
-        
-        # 2. Euclidean linear layer
-        v = self.lin(v)
-        
-        # 3. Nonlinearity in tangent space
-        if self.nonlin is not None:
-            v = self.nonlin(v)
-            
-        # 4. Optional clipping (for stability)
-        if self.tau_clip is not None:
-            r = v.norm(dim=-1, keepdim=True).clamp_min(_eps(v))
-            v = torch.clamp(self.tau_clip / r, max=1.0) * v
-            
-        # 5. Exp map at origin
-        return self.M.exp0(v)
