@@ -1,6 +1,8 @@
 import math
 import os
 import torch
+import torch.nn as nn
+import torch.nn.functional as F
 
 
 PV_DEBUG = os.environ.get("PV_DEBUG") == "1"
@@ -54,14 +56,40 @@ def artanh(x):
     return torch.atanh(x)
 
 
-class PVManifold:
+class PVManifold(nn.Module):
     """PV model with curvature K=-c < 0; use only c and s=1/sqrt(c)."""
 
-    def __init__(self, c: float):
+    def __init__(self, c: float, learnable: bool = False, min_c: float = 1e-8):
+        super().__init__()
         assert c > 0, "c must be positive."
-        self.c = float(c)
-        self.s = 1.0 / math.sqrt(self.c)   # s = 1/√c
-        self.sqrtc = math.sqrt(self.c)     # sqrt(c), used by exp_map and related ops
+        self.min_c = float(min_c)
+        if learnable:
+            # Parameterize curvature with softplus(raw_c) to keep c > 0.
+            init = torch.tensor(float(c), dtype=torch.float32)
+            self.raw_c = nn.Parameter(torch.log(torch.expm1(init)))
+            self.register_buffer("_c_const", torch.tensor(0.0, dtype=torch.float32))
+        else:
+            self.register_buffer("_c_const", torch.tensor(float(c), dtype=torch.float32))
+            self.raw_c = None
+
+    @property
+    def c_tensor(self) -> torch.Tensor:
+        if self.raw_c is None:
+            return self._c_const
+        return F.softplus(self.raw_c) + self.min_c
+
+    @property
+    def c(self) -> float:
+        # Keep legacy access pattern where many call sites expect a float-like curvature.
+        return float(self.c_tensor.detach().item())
+
+    @property
+    def s(self) -> torch.Tensor:
+        return torch.rsqrt(self.c_tensor)
+
+    @property
+    def sqrtc(self) -> torch.Tensor:
+        return torch.sqrt(self.c_tensor)
 
     # ----- Exp/Log at the origin -----
     def exp0(self, v: torch.Tensor) -> torch.Tensor:
@@ -101,22 +129,25 @@ class PVManifold:
 
     # ----- Parallel transport along geodesic 0 -> y -----
     def pt_0_to_y(self, y: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
-        b = beta(y, self.c)                                # (...,1)
-        coef = self.c * b / (1.0 + b)                      # c * β/(1+β)
+        c = self.c_tensor
+        b = beta(y, c)                                     # (...,1)
+        coef = c * b / (1.0 + b)                           # c * β/(1+β)
         dot = (y * v).sum(dim=-1, keepdim=True)
         return v + coef * dot * y
 
     def pt_y_to_0(self, y: torch.Tensor, w: torch.Tensor) -> torch.Tensor:
-        b = beta(y, self.c)
-        coef = self.c * b / (1.0 + b)
+        c = self.c_tensor
+        b = beta(y, c)
+        coef = c * b / (1.0 + b)
         dot = (y * w).sum(dim=-1, keepdim=True)
         return w - coef * dot * y
 
     # ----- PV gyroaddition (closed form; your screenshot Eq. (2)) -----
     def gyro_add(self, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
         # x ⊕ y = x + y + { β_x/(1+β_x) * <x,y>/s^2 + (1-β_y)/β_y } x
-        b_x = beta(x, self.c)                               # (...,1)
-        b_y = beta(y, self.c)                               # (...,1)
+        c = self.c_tensor
+        b_x = beta(x, c)                                    # (...,1)
+        b_y = beta(y, c)                                    # (...,1)
         s2  = self.s * self.s                               # = 1/c
         xy  = (x * y).sum(dim=-1, keepdim=True)
         coef = (b_x / (1.0 + b_x)) * (xy / s2) + (1.0 - b_y) / b_y
@@ -127,7 +158,7 @@ class PVManifold:
 
     # ----- Geodesic distance via PB projection π((−x)⊕y) -----
     def _pi_ball(self, u: torch.Tensor) -> torch.Tensor:
-        b = beta(u, self.c)
+        b = beta(u, self.c_tensor)
         return (b / (1.0 + b)) * u
 
     def dist(self, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
@@ -163,6 +194,22 @@ class PVManifold:
     def logmap0(self, y: torch.Tensor, c: float | None = None) -> torch.Tensor:
         return self.log0(y)
 
+    def hyperbolic_distance(
+        self,
+        x: torch.Tensor,
+        w: torch.Tensor,
+        sigma: torch.Tensor,
+        c: float | torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        """
+        Compatibility API for legacy PV MLR implementation.
+        Approximates point-to-hyperplane distance by mapping to tangent space at origin.
+        """
+        v = self.logmap0(x, c=c)
+        signed = (v * w).sum(dim=-1, keepdim=True) - sigma
+        scale_c = self.c_tensor if c is None else torch.as_tensor(c, dtype=v.dtype, device=v.device)
+        return signed.abs() / torch.sqrt(scale_c.clamp_min(TINY))
+
     def exp_map(self, x: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
         """
         Thm 4.3 / D.4.1 (Eq 643, 608, 634)
@@ -181,11 +228,12 @@ class PVManifold:
 
         # 2. Evaluate dπ_p[v] (Eq 608)
         # *** Fix: ensure b_x uses the correct beta_x [cite: 112]
-        b_x = beta(x, self.c)  # (..., 1) [cite: 112]
+        c = self.c_tensor
+        b_x = beta(x, c)  # (..., 1) [cite: 112]
 
         coef1 = b_x / (1.0 + b_x)
         # dπ_p[v] formulation [cite: 608]
-        coef2 = -(self.c * (b_x ** 3)) / ((1.0 + b_x).clamp_min(TINY) ** 2)
+        coef2 = -(c * (b_x ** 3)) / ((1.0 + b_x).clamp_min(TINY) ** 2)
         dpi_v = coef1 * v + coef2 * dot_x_v * x
 
         # 3. Compute w = Exp_p(v) ominus p using the simplified expression
@@ -239,10 +287,11 @@ class PVManifold:
 
         # 4. Compute τ_term [cite: 115, 707]
         # *** Fix: ensure b_x uses the correct beta_x [cite: 112]
-        b_x = beta(x, self.c)
+        c = self.c_tensor
+        b_x = beta(x, c)
 
         # τ_coef = (c * β_p / (1+β_p)) * σ [cite: 707]
-        tau_coef = (self.c * b_x / (1.0 + b_x).clamp_min(TINY)) * sigma_val
+        tau_coef = (c * b_x / (1.0 + b_x).clamp_min(TINY)) * sigma_val
         dot_x_z = (x * z_pv).sum(dim=-1, keepdim=True)
         tau_term = tau_coef * dot_x_z
 

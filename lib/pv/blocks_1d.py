@@ -14,7 +14,7 @@ def get_pv_convolution_block(manifold: PVManifold,
                              act: str = "none",
                              act2: str | None = None):
     """
-    期望 channels_sizes = [c_in, c_mid, c_mid, c_out]
+    Expects channels_sizes = [c_in, c_mid, c_mid, c_out]
     """
     if act2 is None:
         act2 = act

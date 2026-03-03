@@ -11,16 +11,15 @@ from . import debug as pv_debug
 
 class PVConv2d(nn.Module):
     """
-    一个真正的双曲 2D 卷积层，适用于 PV 流形。
+    A proper hyperbolic 2D convolution layer for PV manifold.
 
-    它遵循 "Transform-then-Aggregate" 范式：
-    1. 为 k*k 核中的每个位置 (i,j) 创建一个独立的 PVFC(in, out) 层。
-    2. 对输入 x 的每个 patch，将其 (i,j) 位置的 C_in 维向量
-       送入 PVFC_{i,j} 层，得到 C_out 维的双曲向量。
-    3. 将 k*k 个 C_out 维的双曲向量 Log0 到切空间。
-    4. 在切空间中对它们求和（聚合）。
-    5. 在切空间中应用激活函数 (phi) 和偏置 (b)。
-    6. 将结果 Exp0 映射回 PV 流形。
+    Follows "Transform-then-Aggregate" paradigm:
+    1. Create independent PVFC(in, out) for each (i,j) in k*k kernel.
+    2. For each patch of x, feed C_in-dim vector at (i,j) to PVFC_{i,j}, get C_out-dim hyperbolic vector.
+    3. Log0 the k*k C_out-dim vectors to tangent space.
+    4. Sum them in tangent space (aggregate).
+    5. Apply activation (phi) and bias (b) in tangent space.
+    6. Exp0 result back to PV manifold.
     """
     def __init__(self, 
                  c: float, 
@@ -32,24 +31,24 @@ class PVConv2d(nn.Module):
                  bias: bool = True, 
                  activation: T.Callable = F.relu):
         """
-        初始化 PV 卷积层。
+        Initialize PV convolution layer.
 
-        参数:
-            c (float): 流形曲率 (c > 0)。
-            in_channels (int): 输入通道数。
-            out_channels (int): 输出通道数 (即 "滤波器" 数量)。
-            kernel_size (int): 卷积核大小 (k x k)。
-            stride (int): 步幅。
-            padding (int): 填充。
-            bias (bool): 是否在切空间聚合后添加欧几里得偏置。
-            activation (Callable): 在切空间中应用的激活函数 (例如 F.relu)。
+        Args:
+            c (float): Manifold curvature (c > 0).
+            in_channels (int): Input channels.
+            out_channels (int): Output channels (number of filters).
+            kernel_size (int): Kernel size (k x k).
+            stride (int): Stride.
+            padding (int): Padding.
+            bias (bool): Whether to add Euclidean bias after tangent-space aggregation.
+            activation (Callable): Activation in tangent space (e.g. F.relu).
         """
         super().__init__()
         self.manifold = PVManifold(c)
         self.in_channels = in_channels
         self.out_channels = out_channels
         
-        # 统一处理 kernel_size
+        # Unified kernel_size handling
         if isinstance(kernel_size, int):
             kernel_size = (kernel_size, kernel_size)
             
@@ -58,17 +57,16 @@ class PVConv2d(nn.Module):
         self.padding = padding
         self.activation = activation
         
-        # 这是设计的核心：
-        # 创建 k*k 个独立的 PVFC 层，每个层都执行 C_in -> C_out 的变换。
+        # Core design: create k*k independent PVFC layers, each C_in -> C_out.
         self.k_h, self.k_w = self.kernel_size
         self.num_kernels = self.k_h * self.k_w
         
         self.kernels = nn.ModuleList()
         for _ in range(self.num_kernels):
-            # 在 PVFC 内部不使用偏置，因为我们在聚合 *之后* 添加一个共享偏置
+            # No bias inside PVFC; we add shared bias after aggregation
             self.kernels.append(PVFC(c, in_channels, out_channels, use_bias=False))
 
-        # 共享的欧几里得偏置，在切空间中聚合后添加
+        # Shared Euclidean bias, added after tangent-space aggregation
         if bias:
             self.bias = nn.Parameter(torch.zeros(out_channels))
         else:
@@ -76,68 +74,68 @@ class PVConv2d(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
-        前向传播。
-        x 形状: [B, C_in, H, W]
+        Forward pass.
+        x shape: [B, C_in, H, W]
         """
         B, C_in, H, W = x.shape
         if C_in != self.in_channels:
-            raise ValueError(f"输入通道 ({C_in}) 与声明的 in_channels ({self.in_channels}) 不匹配")
+            raise ValueError(f"Input channels ({C_in}) do not match declared in_channels ({self.in_channels})")
 
-        # --- 1. 提取 Patches ---
-        # 使用 F.unfold 高效提取所有感受野
+        # --- 1. Extract patches ---
+        # Use F.unfold for efficient receptive field extraction
         patches = F.unfold(x, 
                            kernel_size=self.kernel_size, 
                            padding=self.padding, 
                            stride=self.stride)
-        # patches 形状: [B, C_in * k*k, L]
-        # L 是输出像素数 (H' * W')
-        
-        # --- 2. 重塑 Patches 以便应用核 ---
+        # patches shape: [B, C_in * k*k, L]
+        # L is output pixel count (H' * W')
+
+        # --- 2. Reshape patches for kernel application ---
         # [B, C_in * k*k, L] -> [B, C_in, k*k, L]
         patches = patches.view(B, C_in, self.num_kernels, -1)
         
-        # -> [B, L, k*k, C_in] (将 L 移到批次维度附近)
+        # -> [B, L, k*k, C_in] (move L near batch dim)
         patches = patches.permute(0, 3, 2, 1).contiguous()
-        
-        # -> [B*L, k*k, C_in] (展平 B 和 L，以便批量处理所有像素)
-        # 我们现在有 B*L 个 "patch"，每个 patch 包含 k*k 个 C_in 维向量
-        L = patches.shape[1] # 获取真实的 L (H_out * W_out)
+
+        # -> [B*L, k*k, C_in] (flatten B and L for batch processing)
+        # We have B*L "patches", each with k*k C_in-dim vectors
+        L = patches.shape[1]  # actual L (H_out * W_out)
         patches = patches.view(B * L, self.num_kernels, C_in)
 
-        # --- 3. 应用 PVFC 核、Log0 并聚合 ---
+        # --- 3. Apply PVFC kernels, Log0, and aggregate ---
         v_patches_list = []
         for i in range(self.num_kernels):
-            # 获取所有 patch 中第 i 个位置的 C_in 维向量
-            # x_i 形状: [B*L, C_in]
-            x_i = patches[:, i, :] 
-            
-            # 步骤 1: 特征变换 (在 PV 流形上)
-            # h_i 形状: [B*L, C_out]
+            # Get C_in-dim vector at position i for all patches
+            # x_i shape: [B*L, C_in]
+            x_i = patches[:, i, :]
+
+            # Step 1: Feature transform (on PV manifold)
+            # h_i shape: [B*L, C_out]
             h_i = self.kernels[i](x_i)
-            
-            # 步骤 2: 映射到切空间 (准备聚合)
+
+            # Step 2: Map to tangent space (for aggregation)
             v_i = self.manifold.log0(h_i)
             v_patches_list.append(v_i)
         
-        # 步骤 3: 聚合 (在切空间中)
-        # v_stack 形状: [k*k, B*L, C_out]
+        # Step 3: Aggregate (in tangent space)
+        # v_stack shape: [k*k, B*L, C_out]
         v_stack = torch.stack(v_patches_list, dim=0)
-        # v_agg 形状: [B*L, C_out]
+        # v_agg shape: [B*L, C_out]
         v_agg = v_stack.sum(dim=0)
-        
-        # --- 4. 应用偏置和激活 (在切空间中) ---
+
+        # --- 4. Apply bias and activation (in tangent space) ---
         if self.bias is not None:
-            v_agg = v_agg + self.bias  # 广播 [B*L, C_out] + [C_out]
+            v_agg = v_agg + self.bias  # broadcast [B*L, C_out] + [C_out]
         
         if self.activation is not None:
             v_agg = self.activation(v_agg)
             
-        # --- 5. 映射回 PV 流形 ---
-        # x_out_flat 形状: [B*L, C_out]
+        # --- 5. Map back to PV manifold ---
+        # x_out_flat shape: [B*L, C_out]
         x_out_flat = self.manifold.exp0(v_agg)
-        
-        # --- 6. 恢复图像形状 ---
-        # 计算 H_out, W_out
+
+        # --- 6. Restore image shape ---
+        # Compute H_out, W_out
         H_out = (H + 2 * self.padding - self.k_h) // self.stride + 1
         W_out = (W + 2 * self.padding - self.k_w) // self.stride + 1
         
@@ -147,7 +145,7 @@ class PVConv2d(nn.Module):
         # [B, L, C_out] -> [B, H_out, W_out, C_out]
         x_out = x_out.view(B, H_out, W_out, self.out_channels)
         
-        # [B, H_out, W_out, C_out] -> [B, C_out, H_out, W_out] (恢复 Pytorch 的 NCHW 格式)
+        # [B, H_out, W_out, C_out] -> [B, C_out, H_out, W_out] (restore PyTorch NCHW)
         x_out = x_out.permute(0, 3, 1, 2).contiguous()
         
         return x_out
@@ -156,17 +154,15 @@ class PVConv2d(nn.Module):
 
 class PVConv1d(nn.Module):
     """
-    "先聚合-后变换" (Aggregate-then-Transform) 风格的 PV 卷积层。
-    
-    这实现了导师的 PVFC(Concat(x_i)) 指令。
-    它不使用 Log0/Exp0 封装，而是利用 PV 流形就是 R^n 的特性。
+    "Aggregate-then-Transform" style PV convolution layer.
 
-    1.  提取 k*k 感受野中的 C_in 维向量 x_i。
-    2.  在欧几里得空间中将所有 k 个 x_i 拼接 (Concat) 起来，
-        形成一个 k*C_in 维的超长向量 x_concat。
-    3.  将 x_concat 视为一个 PV 空间 (R^{k*C_in}) 上的点。
-    4.  使用一个 PVFC 层（Thm 5.3） 将 x_concat 
-        从 PV^{k*C_in} 变换到 PV^{C_out}。
+    Implements PVFC(Concat(x_i)) pattern.
+    Uses PV manifold as R^n; no Log0/Exp0 wrapper.
+
+    1. Extract C_in-dim vectors x_i from k*k receptive field.
+    2. Concat all k x_i in Euclidean space to form k*C_in-dim vector x_concat.
+    3. Treat x_concat as point on PV space R^{k*C_in}.
+    4. Use PVFC (Thm 5.3) to map x_concat from PV^{k*C_in} to PV^{C_out}.
     """
     def __init__(self, 
                  c: float, 
@@ -189,10 +185,8 @@ class PVConv1d(nn.Module):
         
         self.num_kernel_positions = self.kernel_size
         
-        # 这是设计的核心：
-        # 一个单独的 PVFC 层 。
-        # 它的输入维度是 k * C_in (拼接后的向量)
-        # 它的输出维度是 C_out
+        # Core design: single PVFC layer
+        # Input dim k * C_in (concatenated vector), output dim C_out
         self.pvfc_transform = PVFC(
             c=c,
             in_features=self.num_kernel_positions * self.in_channels,
@@ -203,43 +197,43 @@ class PVConv1d(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
-        前向传播。
-        x 形状: [B, C_in, L_in] (Pytorch 1D 卷积的标准格式)
+        Forward pass.
+        x shape: [B, C_in, L_in] (PyTorch 1D conv standard format)
         """
         B, C_in, L_in = x.shape
         if C_in != self.in_channels:
-            raise ValueError(f"输入通道 ({C_in}) 与声明的 in_channels ({self.in_channels}) 不匹配")
+            raise ValueError(f"Input channels ({C_in}) do not match declared in_channels ({self.in_channels})")
 
-        # --- 1. 提取 Patches (欧式) ---
-        # F.unfold 需要 4D 输入，我们将 1D 视为 H=1 的 2D
+        # --- 1. Extract patches (Euclidean) ---
+        # F.unfold needs 4D input; treat 1D as 2D with H=1
         x_4d = x.unsqueeze(2)  # [B, C_in, 1, L_in]
         
         patches = F.unfold(x_4d, 
                            kernel_size=(1, self.kernel_size), 
                            padding=(0, self.padding), 
                            stride=(1, self.stride))
-        # patches 形状: [B, C_in * k, L_out]
-        
-        L_out = patches.shape[2] # 获取真实的 L_out
+        # patches shape: [B, C_in * k, L_out]
 
-        # --- 2. 欧式聚合 (Concat) ---
+        L_out = patches.shape[2]  # actual L_out
+
+        # --- 2. Euclidean aggregation (Concat) ---
         # [B, C_in * k, L_out] -> [B, L_out, C_in * k]
         patches_permuted = patches.permute(0, 2, 1).contiguous()
         
-        # -> [B*L_out, C_in * k] (展平 B 和 L_out)
-        # 这就是 x_concat，一个在 R^{k*C_in} 上的大向量
+        # -> [B*L_out, C_in * k] (flatten B and L_out)
+        # This is x_concat, a large vector in R^{k*C_in}
         x_concat = patches_permuted.view(B * L_out, -1)
-        
-        # --- 3. 应用 PVFC 变换 (在流形上) ---
-        # x_concat 被视为 PV^{k*C_in} 上的一个点
-        # x_out_flat 形状: [B*L_out, C_out]
+
+        # --- 3. Apply PVFC transform (on manifold) ---
+        # x_concat treated as point on PV^{k*C_in}
+        # x_out_flat shape: [B*L_out, C_out]
         x_out_flat = self.pvfc_transform(x_concat)
             
-        # --- 4. 恢复序列形状 ---
+        # --- 4. Restore sequence shape ---
         # [B*L_out, C_out] -> [B, L_out, C_out]
         x_out = x_out_flat.view(B, L_out, self.out_channels)
-        
-        # [B, L_out, C_out] -> [B, C_out, L_out] (恢复 Pytorch 的 NCL 格式)
+
+        # [B, L_out, C_out] -> [B, C_out, L_out] (restore PyTorch NCL)
         x_out = x_out.permute(0, 2, 1).contiguous()
         
         return x_out
@@ -247,7 +241,7 @@ class PVConv1d(nn.Module):
 
 class PVReLU(nn.Module):
     """
-    在 PV 流形上的 ReLU：logmap0 → ReLU → expmap0
+    ReLU on PV manifold: logmap0 -> ReLU -> expmap0
     """
     def __init__(self, manifold):
         super().__init__()
@@ -262,9 +256,9 @@ class PVReLU(nn.Module):
 
 class PVAct1d(nn.Module):
     """
-    在 PV 流形上的可选激活：logmap0 → act → expmap0
+    Optional activation on PV manifold: logmap0 -> act -> expmap0
 
-    支持:
+    Supports:
     - relu
     - tanh
     - softplus
@@ -296,7 +290,7 @@ class PVAct1d(nn.Module):
 
 class PVFullyConnected(nn.Module):
     """
-    PV 全连接（保持在流形上）：使用 PVFC 的封装
+    PV fully connected (stays on manifold): PVFC wrapper
     """
     def __init__(self, manifold, in_features: int, out_features: int, use_bias: bool = True, inner_act: str = 'none'):
         super().__init__()
@@ -309,10 +303,10 @@ class PVFullyConnected(nn.Module):
 
 class PVBatchNorm1d(nn.Module):
     """
-    兼容接口的 PV BN：
-    - use_gyrobn=True：使用 gyrobn_pv 中的 PVGyroBN1d，但用 PV_monifold.PVManifold(c) 构建内部流形
-    - use_gyrobn=False：切空间欧式 BN
-    接口兼容 blocks_1d 的扩展参数（忽略未使用项）
+    PV BN with compatible interface:
+    - use_gyrobn=True: use PVGyroBN1d from gyrobn_pv, inner manifold from PV_monifold.PVManifold(c)
+    - use_gyrobn=False: tangent-space Euclidean BN
+    Interface compatible with blocks_1d extended params (unused ignored)
     """
     def __init__(self,
                  manifold,
@@ -335,7 +329,7 @@ class PVBatchNorm1d(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if self.use_gyrobn:
             return self.impl(x)
-        # 切空间 BN
+        # Tangent-space BN
         B, C, L = x.shape
         xt = self.manifold.logmap0(x.permute(0, 2, 1).contiguous().view(-1, C), c=getattr(self.manifold, 'c', None))
         xt = self.bn(xt.view(B, L, C).permute(0, 2, 1))

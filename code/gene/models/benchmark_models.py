@@ -50,7 +50,7 @@ class HyperbolicCNN(nn.Module):
         else:
             self.manifolds.extend([self.manifolds[0] for _ in range(self.num_layers)])
         
-        # Lorentz: 输入 one-hot 通道=5，加时间分量后 in_channels=6
+        # Lorentz: input one-hot channels=5, in_channels=6 after adding time component
         initial_channel_sizes = [6] + [model_dim] * 3
         channel_sizes = [model_dim] * 4
         
@@ -173,10 +173,10 @@ class PVHyperbolicCNN(nn.Module):
         self.num_layers = num_layers
         self.manifolds = nn.ModuleList([PVManifold(c=k, learnable=learnable_k) for _ in range(self.num_layers + 1)])
 
-        # 输入映射：5(one-hot) -> model_dim，兼容当前 block 使用 channels_sizes[1]
+        # Input projection: 5(one-hot) -> model_dim, compatible with block channels_sizes[1]
         self.input_proj = PVConv1d(self.manifolds[0].c, in_channels=5, out_channels=model_dim, kernel_size=1, padding=0)
 
-        # 进入 block 之前已是 model_dim 通道，因此 block 采用恒定通道配置
+        # Before block, already model_dim channels; block uses constant channel config
         initial_channel_sizes = [model_dim] * 4
         channel_sizes = [model_dim] * 4
 
@@ -189,13 +189,13 @@ class PVHyperbolicCNN(nn.Module):
             PVReLU(manifold=manifold) for manifold in self.manifolds
         ])
 
-        # 切空间 FC + PV MLR 分类头
+        # Tangent-space FC + PV MLR classification head
         self.fc_layer = nn.Linear(self.output_length * model_dim, fc_dim)
         self.mlr = PVManifoldMLR(self.manifolds[-1], in_features=fc_dim, num_classes=num_classes)
 
     def forward(self, x):
-        # 输入 x: (B, C_in=5, L)
-        # 先做 5 -> model_dim 输入投影
+        # Input x: (B, C_in=5, L)
+        # First 5 -> model_dim input projection
         x = self.input_proj(x)
         for i in range(self.num_layers):
             out = self.conv_layers[i](x)
@@ -204,7 +204,7 @@ class PVHyperbolicCNN(nn.Module):
 
         x = x.reshape(x.shape[0], -1)
         x = self.fc_layer(x)
-        # 将切空间特征映回 PV 再做 PV MLR
+        # Map tangent-space features back to PV then PV MLR
         x_pv = self.manifolds[-1].expmap0(x)
         x = self.mlr(x_pv)
         return x
@@ -225,7 +225,7 @@ class PoincareHyperbolicCNN(nn.Module):
 
         self.output_length = length
         self.num_layers = num_layers
-        # 使用 geoopt 的 PoincareBall，c=k
+        # Use geoopt PoincareBall, c=k
         self.manifolds = nn.ModuleList([PoincareBall(c=k, learnable=learnable_k) for _ in range(self.num_layers + 1)])
 
         initial_channel_sizes = [5] + [model_dim] * 3
@@ -238,21 +238,21 @@ class PoincareHyperbolicCNN(nn.Module):
             [get_poincare_convolution_block(self.manifolds[i + 1], channel_sizes) for i in range(self.num_layers - 1)]
         )
 
-        self.activations = nn.ModuleList([])  # 已在 block 内含 ReLU 与 BN
+        self.activations = nn.ModuleList([])  # ReLU and BN already in block
 
-        # 切空间 FC + Poincaré MLR 分类头
+        # Tangent-space FC + Poincaré MLR classification head
         self.fc_layer = nn.Linear(self.output_length * model_dim, fc_dim)
         self.mlr = UnidirectionalPoincareMLR(fc_dim, num_classes, bias=True, ball=self.manifolds[-1])
 
     def forward(self, x):
-        # 输入 x: (B, C_in=5, L)
+        # Input x: (B, C_in=5, L)
         for i in range(self.num_layers):
             out = self.conv_layers[i](x)
             x = out
 
         x = x.reshape(x.shape[0], -1)
         x = self.fc_layer(x)
-        # 将切空间特征映回 Poincaré 再做 Poincaré MLR
+        # Map tangent-space features back to Poincaré then Poincaré MLR
         x_p = self.manifolds[-1].expmap0(x)
         x = self.mlr(x_p)
         return x

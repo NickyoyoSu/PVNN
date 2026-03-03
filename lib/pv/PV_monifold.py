@@ -44,7 +44,7 @@ class PVManifold:
         assert c > 0, "c must be positive."
         self.c = float(c)
         self.s = 1.0 / math.sqrt(self.c)   # s = 1/√c
-        self.sqrtc = math.sqrt(self.c)     # √c（供 exp_map 等使用）
+        self.sqrtc = math.sqrt(self.c)     # sqrt(c) for exp_map etc.
 
     # ----- Exp/Log at the origin -----
     def exp0(self, v: torch.Tensor) -> torch.Tensor:
@@ -52,7 +52,7 @@ class PVManifold:
         r = v.norm(dim=-1, keepdim=True)
         coef = torch.sinh(r / self.s) / (r / self.s).clamp_min(_eps(v))
         y = coef * v
-        # 仅在异常时打印诊断
+        # Print diagnostic only on anomaly
         if torch.isnan(y).any() or torch.isinf(y).any():
             with torch.no_grad():
                 def _stat(t):
@@ -147,10 +147,10 @@ class PVManifold:
     def exp_map(self, x: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
         """
         Thm 4.3 / D.4.1 (Eq 643, 608, 634)
-        w = Exp_p(v) ominus p = λ_x * _sinhc(√c * ||v||_p) * dπ_p[v] [cite: 634, 643]
-        其中 λ_x = (1+β_x)/β_x [cite: 705]
+        w = Exp_p(v) ominus p = lambda_x * _sinhc(sqrt(c) * ||v||_p) * dpi_p[v] [cite: 634, 643]
+        where lambda_x = (1+beta_x)/beta_x [cite: 705]
         """
-        # 1. 计算 g_p(v,v) 和其模长 ||v||_p = r_g
+        # 1. Compute g_p(v,v) and norm ||v||_p = r_g
         s2 = self.s * self.s
         x_norm2 = (x * x).sum(dim=-1, keepdim=True)
         v_norm2 = (v * v).sum(dim=-1, keepdim=True)
@@ -160,21 +160,20 @@ class PVManifold:
         g_pvv = (v_norm2 - (dot_x_v * dot_x_v) / (s2 + x_norm2)).clamp_min(TINY)
         r_g = torch.sqrt(g_pvv)  # ||v||_p
         
-        # 2. 计算 dπ_p[v] (Eq 608)
-        # *** 这是修正点 ***
-        # b_x 现在是正确的 beta_x [cite: 112]
+        # 2. Compute dpi_p[v] (Eq 608)
+        # *** Fix: b_x is correct beta_x [cite: 112]
         b_x = beta(x, self.c)  # (..., 1) [cite: 112]
 
         coef1 = b_x / (1.0 + b_x)
-        # dπ_p[v] 公式 [cite: 608]
+        # dpi_p[v] formula [cite: 608]
         coef2 = -(self.c * (b_x ** 3)) / ((1.0 + b_x).clamp_min(TINY) ** 2)
         dpi_v = coef1 * v + coef2 * dot_x_v * x 
 
-        # 3. 计算 w = Exp_p(v) ominus p (使用上面的简化公式)
-        # λ_x = (1+β_x)/β_x [cite: 705]
-        lambda_x = (1.0 + b_x) / b_x.clamp_min(TINY) 
-        
-        # 使用 _sinhc(z) = sinh(z)/z；为防溢出，限制 z=√c·r_g 的幅值
+        # 3. Compute w = Exp_p(v) ominus p (simplified formula above)
+        # lambda_x = (1+beta_x)/beta_x [cite: 705]
+        lambda_x = (1.0 + b_x) / b_x.clamp_min(TINY)
+
+        # _sinhc(z) = sinh(z)/z; clamp z=sqrt(c)*r_g to avoid overflow
         z_arg = self.sqrtc * r_g
         z_arg = torch.clamp(z_arg, -20.0, 20.0)
         # w_coef = λ_x * _sinhc(√c * r_g) [cite: 643]
@@ -195,33 +194,32 @@ class PVManifold:
                       " w_coef max=", float(w_coef.abs().max().item()))
         return y 
 
-    # ----- [核心] Log at x (general) [cite: 110, 671-709] -----
+    # ----- [Core] Log at x (general) [cite: 110, 671-709] -----
     def log_map(self, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
         """
-        一个更简洁的、基于 [cite: 707] 的重构:
+        Compact reconstruction based on [cite: 707]:
         d_pq = dist(p, q)
         σ = d_pq / ||Z_pv||
         τ_term = (c * β_p / (1+β_p)) * σ * <p, Z_pv>
         Log_p(q) = σ * Z_pv + τ_term * p
         """
-        # 1. 计算 Z_pv = (-x) ⊕ y [cite: 709]
+        # 1. Compute Z_pv = (-x) ⊕ y [cite: 709]
         z_pv = self.gyro_add(self.gyro_neg(x), y)
         r_z_pv_sq = (z_pv * z_pv).sum(dim=-1, keepdim=True)
         r_z_pv = torch.sqrt(r_z_pv_sq.clamp_min(TINY))
 
-        # 2. 计算距离 d(x,y)
-        d_xy = self.dist(x, y) # self.dist 内部是数值稳定的
+        # 2. Compute distance d(x,y)
+        d_xy = self.dist(x, y)  # self.dist is numerically stable
 
-        # 3. 计算 σ = d(x,y) / ||Z_pv|| [cite: 114, 707]
+        # 3. Compute sigma = d(x,y) / ||Z_pv|| [cite: 114, 707]
         sigma = d_xy / r_z_pv.clamp_min(TINY)
         
-        # 处理 x=y 的情况 (sigma -> 1)
+        # Handle x=y case (sigma -> 1)
         is_close = (r_z_pv_sq < TINY)
         sigma = torch.where(is_close, torch.ones_like(sigma), sigma)
 
-        # 4. 计算 τ_term [cite: 115, 707]
-        # *** 这是修正点 ***
-        # b_x 现在是正确的 beta_x [cite: 112]
+        # 4. Compute tau_term [cite: 115, 707]
+        # *** Fix: b_x is correct beta_x [cite: 112]
         b_x = beta(x, self.c)
         
         # τ_coef = (c * β_p / (1+β_p)) * σ [cite: 707]
@@ -229,7 +227,7 @@ class PVManifold:
         dot_x_z = (x * z_pv).sum(dim=-1, keepdim=True)
         tau_term = tau_coef * dot_x_z
 
-        # 5. 组合 Log_p(q) = σ * Z_pv + (τ_term) * p [cite: 707]
+        # 5. Assemble Log_p(q) = sigma * Z_pv + (tau_term) * p [cite: 707]
         out = sigma * z_pv + tau_term * x
         if torch.isnan(out).any() or torch.isinf(out).any():
             with torch.no_grad():
@@ -292,7 +290,7 @@ class PVManifoldMLR(nn.Module):
         c = self.c
         sqrtc = self.sqrtc
 
-        # 0) 参数自检与最小自愈（仅当前存在 NaN/Inf 时触发）
+        # 0) Param self-check and minimal self-heal (only when NaN/Inf present)
         if torch.isnan(self.z).any() or torch.isinf(self.z).any():
             with torch.no_grad():
                 self.z.data = torch.nan_to_num(self.z.data, nan=0.0)
@@ -314,7 +312,7 @@ class PVManifoldMLR(nn.Module):
         # broadcast scalars per class
         r_clean = torch.nan_to_num(self.r.squeeze(-1), nan=0.0)
         sr = sqrtc * r_clean                  # [K]    = sqrt(c)*r_k
-        # 最小侵入式稳态：清理 NaN/Inf 并夹紧幅值，避免后续 sinh/sech 溢出
+        # Minimal invasive stability: clean NaN/Inf and clamp magnitude to avoid sinh/sech overflow
         if torch.isnan(sr).any() or torch.isinf(sr).any():
             with torch.no_grad():
                 num_nan = int(torch.isnan(sr).sum().item())
@@ -338,9 +336,9 @@ class PVManifoldMLR(nn.Module):
         coef_outer = (rz.t() / sqrtc)                             # [1,K]
         coef_inner = (sqrtc / rz.t())                             # [1,K]
 
-        # v_k(y) 调试打印（仅在异常时）
+        # v_k(y) debug print (only on anomaly)
         arg = coef_inner * bracket
-        # 最小侵入式：限制 asinh 自变量幅值，避免产生 NaN
+        # Minimal invasive: clamp asinh argument to avoid NaN
         arg = torch.clamp(arg, -1e6, 1e6)
         if torch.isnan(arg).any() or torch.isinf(arg).any() or (rz.min() <= 0):
             with torch.no_grad():
@@ -384,12 +382,12 @@ class PVFC(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         v = self.mlr(x)  # [B, m], signed distances in PV (units of length)
-        # 对 v_k 做“inner_act”激活（按用户新语义）
+        # Apply inner_act to v_k (per user semantics)
         v = self._activate_v(v)
         z = self.sqrtc * v
-        # 最小侵入式稳定：限制 sinh 的输入幅值，避免数值溢出
+        # Minimal invasive stability: clamp sinh input to avoid overflow
         z = torch.clamp(z, -20.0, 20.0)
-        # 调试打印：仅当出现 NaN/Inf 或极端幅值时打印
+        # Debug print: only when NaN/Inf or extreme magnitude
         if torch.isnan(v).any() or torch.isinf(v).any() or torch.isnan(z).any() or torch.isinf(z).any() or (z.abs().max() > 1e6):
             with torch.no_grad():
                 def _stat(t):
@@ -397,7 +395,7 @@ class PVFC(nn.Module):
                     return (float(t2.min().item()), float(t2.max().item()), float(t2.mean().item()))
                 print("[PVFC][diag] v stats min/max/mean=", _stat(v), " | z stats=", _stat(z))
         y = (1.0 / self.sqrtc) * torch.sinh(z)
-        # 欧氏 bias（切空间）→ exp 到流形后做陀螺加法，实现 PVFC 的偏置
+        # Euclidean bias (tangent space) -> exp to manifold then gyro-add for PVFC bias
         if self.use_bias and self.bias is not None:
             b_tan = self.bias.unsqueeze(0).to(x.device, dtype=x.dtype)
             b_hyp = self.M.exp0(b_tan)
