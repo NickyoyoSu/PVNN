@@ -16,7 +16,7 @@ class GyroBNPV(nn.Module):
     
     def __init__(self, manifold: PVManifold, shape, batchdim=[0], momentum=0.1,
                  track_running_stats=True, init_1st_batch=False, eps=1e-6, max_iter=1000,
-                 clamp_factor: float = -1.0, print_stats: bool = False,
+                 clamp_factor: float = -1.0,
                  diff_stats: bool = False, use_post_gain: bool = True,
                  max_step: float = 0.5, use_plain_logexp: bool = True,
                  use_euclid_stats: bool = False, use_gyro_midpoint: bool = False,
@@ -37,9 +37,8 @@ class GyroBNPV(nn.Module):
         if self.track_running_stats:
             self.register_running_stats()
         
-        # Extra tuning and debugging
+        # Extra tuning
         self.clamp_factor = clamp_factor  # -1 means no clamping
-        self.print_stats = print_stats
         self.diff_stats = diff_stats
         self.use_post_gain = use_post_gain
         self.max_step = max_step
@@ -53,11 +52,6 @@ class GyroBNPV(nn.Module):
         self.max_tan_norm = float(max_tan_norm)
         # Clamp threshold for sinh input in gyro scalar mul (relaxing increases dynamic range)
         self.scalar_sinh_clip = float(scalar_sinh_clip)
-        # Debug state
-        self._dbg_seen = 0
-        self._dbg_print_limit = 3
-        self._last_mean_iters = 0
-        self._last_step_norm = 0.0
         # Learnable geometric gain after normalization, to restore sufficient feature magnitude
         self.post_gain = nn.Parameter(torch.tensor(1.5, dtype=torch.get_default_dtype()))
     
@@ -108,11 +102,6 @@ class GyroBNPV(nn.Module):
             out = self.manifold.gyro_add(y, x)
         else:
             raise ValueError("translate must be 'Left' or 'Right'")
-        # Diagnostic only, no numerical replacement to avoid zeroing features
-        if torch.isnan(out).any() or torch.isinf(out).any():
-            with torch.no_grad():
-                print("[GyroBNPV][diag] NaN/Inf after gyrotrans; x/y absmax=",
-                      float(x.abs().max().item()), float(y.abs().max().item()))
         return out
     
     def pv_gyro_scalar_mul(self,
@@ -160,10 +149,6 @@ class GyroBNPV(nn.Module):
         coef = s * torch.sinh(ra) / norm_y.clamp_min(eps)
 
         out = coef * y
-        if torch.isnan(out).any() or torch.isinf(out).any():
-            with torch.no_grad():
-                print("[GyroBNPV][diag] NaN/Inf after scalar_mul; norm_y min/max=",
-                      float(norm_y.min().item()), float(norm_y.max().item()))
         # exact r ⊗ 0 = 0
         return torch.where(norm_y <= eps, torch.zeros_like(out), out)
     
@@ -207,9 +192,6 @@ class GyroBNPV(nn.Module):
             mean = new_mean
             iters += 1
 
-        # Record debug info
-        self._last_mean_iters = iters
-        self._last_step_norm = last_applied_step_norm
         # Return (d,)
         return mean.squeeze(0)
     
@@ -301,9 +283,6 @@ class GyroBNPV(nn.Module):
         inv_input_mean = self.gyroinv(input_mean_b)  # Correct gyro inverse
         x_center = self.gyrotrans(inv_input_mean, x)  # Gyro translation
         x_center = torch.nan_to_num(x_center)
-        if torch.isnan(x_center).any() or torch.isinf(x_center).any():
-            with torch.no_grad():
-                print("[GyroBNPV][diag] NaN/Inf after center; var=", float(input_var_b.mean().item()))
         
         # 3. Scale: use gyro scalar multiplication
         factor = self.shift / (input_var_b + self.eps).sqrt()
@@ -311,38 +290,10 @@ class GyroBNPV(nn.Module):
         factor = self.shift / (torch.clamp(input_var_b, min=self.var_floor) + self.eps).sqrt()
         if self.clamp_factor is not None and self.clamp_factor > 0:
             factor = factor.clamp(max=self.clamp_factor)
-        if torch.isnan(factor).any() or torch.isinf(factor).any():
-            with torch.no_grad():
-                print("[GyroBNPV][diag] NaN/Inf in factor; shift mean=",
-                      float(self.shift.mean().item()), " var_floor=", self.var_floor)
-        # Debug print disabled
         x_scaled = self.pv_gyro_scalar_mul(x_center, factor)  # Gyro scalar mul
-        if torch.isnan(x_scaled).any() or torch.isinf(x_scaled).any():
-            with torch.no_grad():
-                print("[GyroBNPV][diag] NaN/Inf after scale; factor min/max/mean=",
-                      float(factor.min().item()), float(factor.max().item()), float(factor.mean().item()))
         
         # 4. Bias: use gyro translation
         x_normed = self.gyrotrans(weight, x_scaled)  # Gyro translation
-        if torch.isnan(x_normed).any() or torch.isinf(x_normed).any():
-            with torch.no_grad():
-                print("[GyroBNPV][diag] NaN/Inf after bias (gyrotrans)")
-
-        # Debug print (limited count)
-        if self.print_stats and self._dbg_seen < self._dbg_print_limit:
-            with torch.no_grad():
-                def _s(t):
-                    t = t if isinstance(t, torch.Tensor) else torch.tensor(t)
-                    return dict(min=float(t.min().item()), max=float(t.max().item()),
-                                mean=float(t.mean().item()), std=float(t.std(unbiased=False).item()))
-                fnorm = torch.linalg.norm(factor)
-                xcn = torch.linalg.norm(x_center) / (x_center.numel() ** 0.5)
-                xsn = torch.linalg.norm(x_scaled) / (x_scaled.numel() ** 0.5)
-                iv = torch.nan_to_num(input_var_b, nan=0.0).view(-1)[0]
-                print(f"[GyroBNPV] iters={self._last_mean_iters} step_norm={self._last_step_norm:.3e} factor_norm={float(fnorm.item()):.3e} x_center_rms={float(xcn.item()):.3e} x_scaled_rms={float(xsn.item()):.3e}")
-                print(f"[GyroBNPV] factor stats: {_s(factor)}  shift={_s(self.shift)}")
-                print(f"[GyroBNPV] input_var={float(iv.item()):.6e}  post_gain={float(self.post_gain.item()):.3f}")
-                self._dbg_seen += 1
 
         # 5. Post-normalization geometric gain (optional)
         if self.use_post_gain:

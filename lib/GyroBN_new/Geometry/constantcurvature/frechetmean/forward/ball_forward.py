@@ -54,7 +54,4 @@ def frechet_ball_forward(X, w, K=-1.0, max_iter=1000, rtol=1e-6, atol=1e-6, verb
         mu_prev = mu
         iters += 1
 
-    if verbose:
-        print(iters)
-
     return mu

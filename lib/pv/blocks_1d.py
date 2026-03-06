@@ -24,7 +24,7 @@ def get_pv_convolution_block(manifold: PVManifold,
                  out_channels=channels_sizes[1],
                  kernel_size=kernel_size,
                  padding=padding),
-        PVBatchNorm1d(manifold=manifold, num_features=channels_sizes[1], use_gyrobn=False, print_stats=True, clamp_factor=3.0, use_euclid_stats=True),
+        PVBatchNorm1d(manifold=manifold, num_features=channels_sizes[1], use_gyrobn=False, clamp_factor=3.0, use_euclid_stats=True),
         PVAct1d(manifold=manifold, act=act),
         PVConv1d(c=getattr(manifold, 'c', getattr(manifold, 'curvature', 1.0)),
                  in_channels=channels_sizes[1],
@@ -35,4 +35,3 @@ def get_pv_convolution_block(manifold: PVManifold,
         
     )
        
-

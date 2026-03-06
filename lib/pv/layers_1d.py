@@ -6,7 +6,6 @@ import typing as T
 
 from .PV_monifold import PVManifold, PVFC
 from .gyrobn_pv import PVGyroBN1d
-from . import debug as pv_debug
 
 
 class PVConv1d(nn.Module):
@@ -127,11 +126,9 @@ class PVAct1d(nn.Module):
         self.act = (act or "none").lower()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        pv_debug.report_if_nonfinite("PVAct1d.input", x)
         if self.act in ("none", "identity", "linear"):
             return x
         v = self.manifold.logmap0(x, c=getattr(self.manifold, 'c', None))
-        pv_debug.report_if_nonfinite("PVAct1d.logmap0", v)
         if self.act == "relu":
             v = F.relu(v)
         elif self.act == "tanh":
@@ -141,7 +138,6 @@ class PVAct1d(nn.Module):
         else:
             raise ValueError(f"Unsupported PV activation: {self.act}")
         y = self.manifold.expmap0(v, c=getattr(self.manifold, 'c', None))
-        pv_debug.report_if_nonfinite("PVAct1d.output", y)
         return y
 
 
@@ -156,7 +152,6 @@ class PVBatchNorm1d(nn.Module):
                  manifold,
                  num_features: int,
                  use_gyrobn: bool = True,
-                 print_stats: bool = False,
                  clamp_factor: float = 3.0,
                  use_euclid_stats: bool = True,
                  **kwargs):

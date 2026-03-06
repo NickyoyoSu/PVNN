@@ -15,7 +15,6 @@ from lib.poincare.hnn_manifold import (
     HNNPlusPlusLayer,
 )
 import torch.nn.init as init
-import sys
 
 ACT_MAP = {
     "identity": nn.Identity,
@@ -38,14 +37,6 @@ def _resolve_pv_curvature(manifold, default=-1.0):
     if c_attr is not None:
         return -abs(c_attr)
     return default
-def check_nan(tensor, location_name):
-    if torch.isnan(tensor).any():
-        print(f"*** NaN detected at: {location_name} ***")
-        print(f"Tensor shape: {tensor.shape}")
-        nan_indices = torch.nonzero(torch.isnan(tensor))
-        if nan_indices.numel() > 0:
-            print(f"NaN indices: {nan_indices[:10]}...")           
-        sys.exit(1)          
 
 class GeometricModel(nn.Module):
     def __init__(self, model_type, dim=16,hidden_dim = 16, n_classes=2, c=1.0, p_drop: float = 0.0, final_act: str = "softplus",inner_act = 'none',outer_act = 'tangent', linear_type: str = 'pvfc'):
@@ -164,52 +155,26 @@ class GeometricModel(nn.Module):
             raise ValueError(f"Unknown model type: {model_type}")
 
     def forward(self, x):
-        check_nan(x, "model input")
-        
         if self.model_type == 'fc':
             h = self.activation(self.layer1(x))
-            check_nan(h, "after FC activation")
             return self.classifier(h)
         elif self.model_type in ['hnn', 'hnn++', 'lnn', 'knn']:
             x_tan = self.manifold.proj_tan0(x, c=self.manifold.c)
-            check_nan(x_tan, "after proj_tan0")
-            
             x_hyp = self.manifold.expmap0(x_tan, c=self.manifold.c)
-            check_nan(x_hyp, "after expmap0")
-            
             x_hyp = self.manifold.proj(x_hyp, c=self.manifold.c)
-            check_nan(x_hyp, "after proj")
-            
             h = self.layers[0](x_hyp)       
-            check_nan(h, "after first layer")
-            
             h = self.layers[1](h)       
-            check_nan(h, "after second layer")
-            
             h_tangent = self.manifold.logmap0(h, c=self.manifold.c)
-            check_nan(h_tangent, "after logmap0")
-            
             logits = self.classifier(h_tangent)
-            check_nan(logits, "classifier output")
-            
             return logits
             
         elif self.model_type == 'pvnn':
             x_tan = self.manifold.proj_tan0(x, c=self.manifold.c)
-            check_nan(x_tan, "after proj_tan0")
             x_hyp = self.manifold.expmap0(x_tan, c=self.manifold.c)
-            check_nan(x_hyp, "after expmap0")
             x_hyp = self.manifold.proj(x_hyp, c=self.manifold.c)
-            check_nan(x_hyp, "after proj")
- 
             h = self.layers[0](x_hyp)       
-            check_nan(h, "after first layer")
-
             h = self.layers[1](h)       
-            check_nan(h, "after second layer")
-             
             logits = self.classifier(h)
-            check_nan(logits, "classifier output")
             return logits
 
 
@@ -247,25 +212,10 @@ class CustomHyperbolicLayer(nn.Module):
         
     
     def forward(self, x):
-        check_nan(x, f"CustomHyperbolicLayer input")
         if self.inner_pre_activation is not None and self._linear_type != 'pv_lfc':
             x = self.inner_pre_activation(x)
-            check_nan(x, f"after built-in pre-activation")
         h = self.linear(x)
-        if torch.isnan(h).any():
-            with torch.no_grad():
-                def _stat(t):
-                    t2 = torch.nan_to_num(t)
-                    return (float(t2.min().item()), float(t2.max().item()), float(t2.mean().item()))
-                print("[CustomHyperbolicLayer] NaN after linear; x(min,max,mean)=", _stat(x),
-                      " h(min,max,mean)=", _stat(h), " type=", getattr(self, "_linear_type", "unknown"))
-                if getattr(self, "_linear_type", "") == 'pvfc':
-                    print("[Hint] Check lib.pv.graph_ops.PVFC.forward for z clamping and diagnostics.")
-        check_nan(h, f"after CustomHyperbolicLinear")
-        
         h = self.activation(h)
-        check_nan(h, f"after activation")
-        
         return h
     
 class ManifoldDirectReLU(nn.Module):
@@ -313,12 +263,8 @@ class CustomHyperbolicLinear(nn.Module):
             init.zeros_(self.bias)
 
     def forward(self, x):
-        check_nan(x, "CustomHyperbolicLinear input")
-
         if self.activation is not None:
             t = self.manifold.logmap0(x, c=self.c)
-            check_nan(t, "after logmap0")
-
             if torch.isnan(self.weight).any() or torch.isinf(self.weight).any():
                 with torch.no_grad():
                     self.reset_parameters()
@@ -329,18 +275,11 @@ class CustomHyperbolicLinear(nn.Module):
                     W = F.dropout(self.weight, self.dropout, training=self.training)
                     if torch.isnan(W).any() or torch.isinf(W).any():
                         W = torch.nan_to_num(W, nan=0.0, posinf=1e6, neginf=-1e6).clamp_(-1e3, 1e3)
-            check_nan(W, "after weight dropout")
-
             t = t @ W.t()
             if self.use_bias:
                 t = t + self.bias
-            check_nan(t, "after tangent-space linear (+bias)")
-
             t = self.activation(t)
-            check_nan(t, "after tangent-space activation")
-
             y = self.manifold.expmap0(t, c=self.c)
-
             y = self.manifold.proj(y, c=self.c)
             return y
 
@@ -354,30 +293,14 @@ class CustomHyperbolicLinear(nn.Module):
                 drop_weight = F.dropout(self.weight, self.dropout, training=self.training)
                 if torch.isnan(drop_weight).any() or torch.isinf(drop_weight).any():
                     drop_weight = torch.nan_to_num(drop_weight, nan=0.0, posinf=1e6, neginf=-1e6).clamp_(-1e3, 1e3)
-        check_nan(drop_weight, "after weight dropout")
-
         mv = self.manifold.pv_gyro_matvec(drop_weight, x, self.c)
-        check_nan(mv, "after mobius_matvec")
-
         res = self.manifold.proj(mv, self.c)
-        check_nan(res, "after result proj")
-
         if self.use_bias:
             bias_tan = self.manifold.proj_tan0(self.bias.view(1, -1), self.c)
-            check_nan(bias_tan, "bias after proj_tan0")
-
             hyp_bias = self.manifold.expmap0(bias_tan, self.c)
-            check_nan(hyp_bias, "hyp_bias after expmap0")
-
             hyp_bias = self.manifold.proj(hyp_bias, self.c)
-            check_nan(hyp_bias, "hyp_bias after proj")
-
             res = self.manifold.pv_gyro_add(res, hyp_bias, self.c)
-            check_nan(res, "after mobius_add")
-
             res = self.manifold.proj(res, self.c)
-            check_nan(res, "after final proj")
-
         return res
 
 class CustomHyperbolicActivation(nn.Module):
@@ -400,20 +323,10 @@ class CustomHyperbolicActivation(nn.Module):
     def forward(self, x):
         x = self.manifold.proj(x, c=self.c_in)
         logmap_result = self.manifold.logmap0(x, c=self.c_in)
-        check_nan(logmap_result, "logmap0 result")
-        
         activated = self.activation(logmap_result)
-        check_nan(activated, "after activation function")
-        
         xt = self.manifold.proj_tan0(activated, c=self.c_out)
-        check_nan(xt, "after proj_tan0")
-        
         expmap_result = self.manifold.expmap0(xt, c=self.c_out)
-        check_nan(expmap_result, "expmap0 result")
-        
         final_result = self.manifold.proj(expmap_result, c=self.c_out)
-        check_nan(final_result, "after final proj")
-        
         return final_result
     
 class ManifoldTanh(nn.Module):

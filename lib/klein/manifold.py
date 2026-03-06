@@ -25,53 +25,6 @@ class Artanh(torch.autograd.Function):
 def artanh(x):
     return Artanh.apply(x)
 
-def proj(self, x, c=None):
-    k_val = c if c is not None else self.k
-    eps = 1e-10
-    
-    print(f"\n===== Klein projection debug =====")
-    print(f"Input shape: {x.shape}, curvature: {k_val}")
-    
-    has_nan = torch.isnan(x).any()
-    has_inf = torch.isinf(x).any()
-    if has_nan or has_inf:
-        print(f"Warning: input contains {'NaN' if has_nan else ''}{' and ' if has_nan and has_inf else ''}{'Inf' if has_inf else ''}")
-    
-    x_norm = torch.norm(x, dim=-1, keepdim=True)
-    print(f"Norm stats: min={x_norm.min().item():.6f}, max={x_norm.max().item():.6f}, mean={x_norm.mean().item():.6f}")
-    
-    very_small_norms = (x_norm < 1e-8).sum().item()
-    if very_small_norms > 0:
-        print(f"Warning: detected {very_small_norms} near-zero norm values")
-    
-    max_norm = (1.0 / math.sqrt(k_val)) - eps
-    print(f"Maximum allowed norm: {max_norm:.6f}")
-    
-    mask = x_norm > max_norm
-    scaling_count = mask.sum().item()
-    print(f"Points requiring scaling: {scaling_count}")
-    
-    safe_x_norm = torch.clamp_min(x_norm, 1e-8)
-    scaling_factor = max_norm / safe_x_norm
-    
-    if torch.isnan(scaling_factor).any() or torch.isinf(scaling_factor).any():
-        print(f"Warning: scaling factor contains NaN/Inf, applying fix")
-        scaling_factor = torch.clamp(scaling_factor, 0, 1e6)
-    
-    x_safe = torch.where(mask, x * scaling_factor, x)
-    
-    if torch.isnan(x_safe).any() or torch.isinf(x_safe).any():
-        print(f"Warning: result contains NaN/Inf, using fallback projection")
-        norm_ratio = torch.clamp_min(x_norm, 1e-8) / max_norm
-        safe_ratio = torch.clamp(norm_ratio, max=0.99)          
-        x_safe = x / norm_ratio * safe_ratio
-    
-    x_safe = torch.nan_to_num(x_safe, nan=0.0, posinf=0.0, neginf=0.0)
-    
-    print(f"===== Klein projection complete =====\n")
-    return x_safe
-
-
 class KleinManifold(torch.nn.Module):
     def __init__(self, c=1.0):
         super().__init__()
@@ -118,20 +71,6 @@ class KleinManifold(torch.nn.Module):
         
         x_safe = torch.where(mask, x * (max_norm / safe_x_norm), x)
         
-        if torch.isnan(x_safe).any():
-            print("\n--- NaN detected in Klein.proj, printing debug info ---")
-            print(f"Input x shape: {x.shape}, c: {k_val}")
-            if torch.isnan(x).any(): print("Warning: proj input x contains NaN")
-            if torch.isinf(x).any(): print("Warning: proj input x contains Inf")
-            
-            print(f"Computed norm (x_norm): min={x_norm.min():.4f}, max={x_norm.max():.4f}, has_nan={torch.isnan(x_norm).any()}, has_inf={torch.isinf(x_norm).any()}")
-            if has_norm_nan_or_inf:
-                print("-> NaN/Inf detected in norm and repaired")
-
-            print(f"Maximum allowed norm: {max_norm:.4f}, number of points to project: {mask.sum()}")
-            print(f"Projected x_safe: has_nan={torch.isnan(x_safe).any()}, has_inf={torch.isinf(x_safe).any()}")
-            print("--- Klein.proj debug finished ---\n")
-        
         return x_safe
 
 
@@ -143,7 +82,6 @@ class KleinManifold(torch.nn.Module):
 
     def logmap0(self, p, c):
         if torch.isnan(p).any():
-            print("Warning: logmap0 input contains NaN; attempting repair")
             p = torch.nan_to_num(p, nan=0.0)
         
         sqrt_c = c ** 0.5
@@ -211,25 +149,6 @@ class KleinManifold(torch.nn.Module):
         result = num / denom.clamp_min(self.min_norm)
         final_result = self.proj(result, c=k_val)
         
-        if torch.isnan(final_result).any():
-            print("\n--- NaN detected in Klein.add (mobius_add), printing debug info ---")
-            print(f"Input x shape: {x.shape}, y shape: {y.shape}, c: {k_val}")
-            if torch.isnan(x).any(): print("Warning: input x contains NaN")
-            if torch.isinf(x).any(): print("Warning: input x contains Inf")
-            if torch.isnan(y).any(): print("Warning: input y contains NaN")
-            if torch.isinf(y).any(): print("Warning: input y contains Inf")
-
-            print(f"x2: min={x2.min():.4f}, max={x2.max():.4f}, has_nan={torch.isnan(x2).any()}")
-            print(f"y2: min={y2.min():.4f}, max={y2.max():.4f}, has_nan={torch.isnan(y2).any()}")
-            print(f"xy: min={xy.min():.4f}, max={xy.max():.4f}, has_nan={torch.isnan(xy).any()}")
-
-            print(f"num: has_nan={torch.isnan(num).any()}, has_inf={torch.isinf(num).any()}")
-            print(f"denom: min={denom.min():.4f}, max={denom.max():.4f}, has_nan={torch.isnan(denom).any()}, zeros={torch.sum(denom == 0)}")
-            
-            print(f"Result after division: has_nan={torch.isnan(result).any()}, has_inf={torch.isinf(result).any()}")
-            print(f"Final projection final_result: has_nan={torch.isnan(final_result).any()}")
-            print("--- Klein.add (mobius_add) debug finished ---\n")
-
         return final_result
     
     def mobius_add(self, x, y, c=None, dim=-1):
@@ -307,21 +226,3 @@ class KleinManifoldMLR(nn.Module):
         
         return logits 
     
-
-if __name__ == "__main__":
-    k=0.7
-    n = 8
-
-    x = torch.randn(10, n) * 0.3
-    x = x / torch.norm(x, dim=-1, keepdim=True) * (0.9 / torch.sqrt(torch.tensor(k)))
-    
-    X = klein_to_lorentz(x, k)
-    
-    constraint = -X[...,0:1].pow(2) + X[...,1:].pow(2).sum(dim=-1, keepdim=True)
-    target = torch.tensor(-1.0/k)
-    print(f"Constraint error: {torch.abs(constraint - target).max().item():.8f}")
-    
-    x2 = lorentz_to_klein(X, k)
-    
-    print(f"Conversion error: {torch.abs(x - x2).max().item():.8f}")
-    assert torch.allclose(x, x2, atol=1e-6)

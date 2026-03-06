@@ -94,18 +94,11 @@ def getArguments():
     parser.add_argument('--multi_k_model', default=False, type=bool,
                         help="Set hyperbolic model to have multiple manifolds or a single manifold")  
 
-    # Debug settings
-    parser.add_argument('--debug_nans', dest='debug_nans', action='store_true',
-                        help="Enable NaN/Inf debug hooks and anomaly detection.")
-    parser.add_argument('--no_debug_nans', dest='debug_nans', action='store_false',
-                        help="Disable NaN/Inf debug hooks and anomaly detection.")
-    parser.set_defaults(debug_nans=False)
-
     args = parser.parse_args()
     return args
 
 
-def train(model, device, train_loader, optimizer, epoch, loss_fn, log_interval=10, debug_nans=False):
+def train(model, device, train_loader, optimizer, epoch, loss_fn, log_interval=10):
     """Training loop."""
     model.train()
     correct = 0
@@ -115,19 +108,8 @@ def train(model, device, train_loader, optimizer, epoch, loss_fn, log_interval=1
         data, target = data.to(device), target.to(device)
         optimizer.zero_grad()
         output = model(data)
-        if debug_nans:
-            if not torch.isfinite(output).all():
-                print("[NaN/Inf] Detected in model output. Stats: min=", torch.nanmin(output).item(),
-                      " max=", torch.nanmax(output).item(), " mean=", torch.nanmean(output).item())
-                raise RuntimeError("Non-finite values in model output")
         loss = loss_fn(output, target.squeeze())
         loss.backward()
-        if debug_nans:
-            for name, p in model.named_parameters():
-                if p.grad is not None and not torch.isfinite(p.grad).all():
-                    g = p.grad
-                    print(f"[NaN/Inf][grad] Param={name}, shape={tuple(g.shape)}, min={torch.nanmin(g).item()}, max={torch.nanmax(g).item()}, mean={torch.nanmean(g).item()}")
-                    raise RuntimeError(f"Non-finite gradients in parameter: {name}")
         optimizer.step()
         pred = output.argmax(dim=1, keepdim=True)  # get the index of the max log-probability
         correct += pred.eq(target.view_as(pred)).sum().item()
@@ -205,40 +187,6 @@ def main(args):
     if args.output_dir is not None:
         os.makedirs(args.output_dir, exist_ok=True)
     
-    # Enable NaN/Inf debug mode
-    if args.debug_nans:
-        torch.autograd.set_detect_anomaly(True)
-
-        def _tensor_has_bad(t: torch.Tensor) -> bool:
-            return (t is not None) and (not torch.isfinite(t).all())
-
-        def _scan_bad(x) -> bool:
-            if isinstance(x, torch.Tensor):
-                return _tensor_has_bad(x)
-            if isinstance(x, (list, tuple)):
-                return any(_scan_bad(xx) for xx in x)
-            if isinstance(x, dict):
-                return any(_scan_bad(v) for v in x.values())
-            return False
-
-        def _summarize(t: torch.Tensor) -> str:
-            try:
-                return f"shape={tuple(t.shape)}, min={torch.nanmin(t).item()}, max={torch.nanmax(t).item()}, mean={torch.nanmean(t).item()}"
-            except Exception:
-                return f"shape={tuple(t.shape)}"
-
-        for mod_name, module in model.named_modules():
-            def _make_hook(name):
-                def _hook(mod, inputs, output):
-                    if _scan_bad(output):
-                        msg = f"[NaN/Inf][forward] Module={name} ({mod.__class__.__name__})"
-                        if isinstance(output, torch.Tensor):
-                            msg += " | " + _summarize(output)
-                        print(msg)
-                        raise RuntimeError(f"Non-finite values in forward output at module: {name}")
-                return _hook
-            # avoid registering on the root module twice (named_modules includes root as '')
-            module.register_forward_hook(_make_hook(mod_name or module.__class__.__name__))
     print('-> Number of model params: {} (trainable: {})'.format(
         sum(p.numel() for p in model.parameters()),
         sum(p.numel() for p in model.parameters() if p.requires_grad),
@@ -258,7 +206,7 @@ def main(args):
 
     for epoch in range(args.num_epochs):
         
-        train(model, device, train_loader, optimizer, epoch, loss_fn, debug_nans=args.debug_nans)
+        train(model, device, train_loader, optimizer, epoch, loss_fn)
         mcc = evaluate(model, device, val_loader, loss_fn)
 
         if lr_scheduler is not None:
