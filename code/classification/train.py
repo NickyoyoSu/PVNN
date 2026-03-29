@@ -8,9 +8,9 @@ project_root = os.path.realpath(os.path.join(working_dir, "..", ".."))
 os.chdir(working_dir)
 
 if working_dir not in sys.path:
-    sys.path.append(working_dir)
+    sys.path.insert(0, working_dir)
 if project_root not in sys.path:
-    sys.path.append(project_root)
+    sys.path.insert(0, project_root)
 # -----------------------------------------------------
 
 import torch

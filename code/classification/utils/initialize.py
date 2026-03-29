@@ -1,4 +1,5 @@
 import os
+import sys
 from pathlib import Path
 
 import torch
@@ -9,11 +10,15 @@ from lib.geoopt import ManifoldParameter
 from lib.geoopt.optim import RiemannianAdam, RiemannianSGD
 from torch.optim.lr_scheduler import MultiStepLR
 
-from models.classifier import ResNetClassifier
 from PIL import Image
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DATA_ROOT = PROJECT_ROOT / "data"
+
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from models.classifier import ResNetClassifier
 
 
 class TinyImageNetValDataset(torch.utils.data.Dataset):

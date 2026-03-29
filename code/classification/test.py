@@ -8,9 +8,9 @@ project_root = os.path.realpath(os.path.join(working_dir, "..", ".."))
 os.chdir(working_dir)
 
 if working_dir not in sys.path:
-    sys.path.append(working_dir)
+    sys.path.insert(0, working_dir)
 if project_root not in sys.path:
-    sys.path.append(project_root)
+    sys.path.insert(0, project_root)
 # -----------------------------------------------------
 
 import torch
@@ -25,7 +25,6 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm
 
 from utils.initialize import select_dataset, select_model, load_model_checkpoint
-from lib.utils.visualize import visualize_embeddings
 from train import evaluate
 
 from lib.utils.utils import AverageMeter, accuracy
@@ -155,6 +154,8 @@ def main(args):
 
 @torch.no_grad()
 def save_embeddings(model, data_loader, output_path, device):
+    from lib.utils.visualize import visualize_embeddings
+
     fig = visualize_embeddings(model, data_loader, device, model.module.dec_manifold, model.module.dec_type=="poincare")
     print(f"Saving embeddings to {output_path}...")
     fig.savefig(output_path)
