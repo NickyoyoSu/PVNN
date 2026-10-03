@@ -28,6 +28,7 @@ num_layers = 18
 embedding_dim = 512
 encoder_manifold = euclidean
 decoder_manifold = poincare
+mlr_type = b # Busemann MLR
 
 # Manifold settings
 # learn_k = True

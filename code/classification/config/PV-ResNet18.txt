@@ -1,14 +1,16 @@
-# python code/classification/train.py -c code/classification/config/P-ResNet18.txt
+# python code/classification/train.py -c code/classification/config/PV-ResNet18.txt
+
+# PV MLR head on a Euclidean ResNet-18 (Section 6.2, Appendix C.2)
 
 # Output settings
-exp_name = P-ResNet18
+exp_name = PV-ResNet18
 #output_dir = output/classification
 
 # General settings
 device = cuda:0
 dtype = float32
 seed = 1
-#load_checkpoint = output/classification/P-ResNet18.pth
+#load_checkpoint = output/classification/PV-ResNet18.pth
 
 # General training hyperparameters
 num_epochs = 200
@@ -27,12 +29,13 @@ batch_size_test = 128
 num_layers = 18
 embedding_dim = 512
 encoder_manifold = euclidean
-decoder_manifold = poincare
+decoder_manifold = pv
 
 # Manifold settings
 # learn_k = True
 encoder_k = 1.0
-decoder_k = 1.0
+decoder_k = 0.15
+clip_features = 1.0
 
 # Dataset settings
-dataset = CIFAR-10 # CIFAR-100 or Tiny-ImageNet
+dataset = CIFAR-100 # CIFAR-10 or Tiny-ImageNet

@@ -1,0 +1,33 @@
+# python code/gene/train.py -c code/gene/configs/PV_TEB.txt
+# PVCNN on TEB (Section 6.4, Appendix C.4). Curvature used in our runs: k = 0.25 (hAT-Ac), k = 0.225 (SINEs).
+
+# Output settings
+run_name = TEB_dna_hat_ac_pv
+output_dir = output/gene
+data_path = code/gene/data
+benchmark = TEB
+
+# General settings
+device = cuda:0
+
+# Experiment settings
+seed = 1
+length = 1000
+
+# General training hyperparameters
+optimizer = RiemannianAdam
+lr = 0.0001
+manifold_lr = 0.005
+
+# Model selection
+num_layers = 3
+num_channels = 32
+embedding_dim = 528
+manifold = pv
+
+# Hyperbolic geometry settings
+learnable_k = True
+k = 0.25
+
+# Dataset settings
+dataset_name = dna_hat_ac
