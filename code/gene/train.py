@@ -23,6 +23,17 @@ from utils.data_utils import select_dataset
 from sklearn.metrics import matthews_corrcoef
 
 
+def str2bool(value):
+    """ Parses 'true'/'false' style strings; argparse's type=bool treats any non-empty string as True. """
+    if isinstance(value, bool):
+        return value
+    if value.lower() in ("true", "t", "yes", "y", "1"):
+        return True
+    if value.lower() in ("false", "f", "no", "n", "0"):
+        return False
+    raise configargparse.ArgumentTypeError(f"Boolean value expected, got '{value}'.")
+
+
 def getArguments():
     """ Parses command-line options. """
     parser = configargparse.ArgumentParser(description='Genomic classification task training', add_help=True)
@@ -67,7 +78,7 @@ def getArguments():
     parser.add_argument('--optimizer', default="RiemannianAdam", type=str,
                         choices=["RiemannianAdam", "RiemannianSGD", "Adam", "SGD"],
                         help="Optimizer for training.")
-    parser.add_argument('--use_lr_scheduler', default=True,
+    parser.add_argument('--use_lr_scheduler', default=True, type=str2bool,
                         help="If learning rate should be reduced after step epochs using a LR scheduler.")
     parser.add_argument('--lr_scheduler_milestones', default=[60, 85], type=int, nargs="+",
                         help="Milestones of LR scheduler.")
@@ -86,11 +97,11 @@ def getArguments():
                         help="Select CNN model manifold.")
 
     # Hyperbolic geometry settings
-    parser.add_argument('--learnable_k', default=True, type=bool,
+    parser.add_argument('--learnable_k', default=True, type=str2bool,
                         help="Set a learnable curvature of hyperbolic geometry.")
     parser.add_argument('--k', default=1.0, type=float,
                         help="Initial curvature of hyperbolic geometry in backbone (geoopt.K=-1/K).")
-    parser.add_argument('--multi_k_model', default=False, type=bool,
+    parser.add_argument('--multi_k_model', default=False, type=str2bool,
                         help="Set hyperbolic model to have multiple manifolds or a single manifold")  
 
     args = parser.parse_args()
@@ -200,7 +211,7 @@ def main(args):
         model, optimizer, lr_scheduler = load_checkpoint(model, optimizer, lr_scheduler, args)
 
     print("Training...")
-    best_mcc = 0.0
+    best_mcc = float("-inf")
     best_epoch = 0
 
     for epoch in range(args.num_epochs):

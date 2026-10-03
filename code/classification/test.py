@@ -72,7 +72,7 @@ def getArguments():
                         help = "Dimensionality of classification embedding space (could be expanded by ResNet)")
     parser.add_argument('--encoder_manifold', default='lorentz', type=str, choices=["euclidean", "lorentz"], 
                         help = "Select conv model encoder manifold.")
-    parser.add_argument('--decoder_manifold', default='lorentz', type=str, choices=["euclidean", "lorentz", "poincare"], 
+    parser.add_argument('--decoder_manifold', default='lorentz', type=str, choices=["euclidean", "euclidean_custom", "lorentz", "poincare", "pv", "klein"], 
                         help = "Select conv model decoder manifold.")
     
 
@@ -85,6 +85,8 @@ def getArguments():
                         help = "Initial curvature of hyperbolic geometry in decoder (geoopt.K=-1/K).")
     parser.add_argument('--clip_features', default=1.0, type=float, 
                         help = "Clipping parameter for hybrid HNNs proposed by Guo et al. (2022)")
+    parser.add_argument('--mlr_type', default='b', type=str, choices=['b', 'g', 'hnn++'],
+                        help="MLR head for the Poincare decoder: b = Busemann, g = Ganea et al. (2018), hnn++ = unidirectional MLR (Shimizu et al., 2021). Ignored for other decoders.")
     
     # Dataset settings
     parser.add_argument('--dataset', default='CIFAR-100', type=str, choices=["MNIST", "CIFAR-10", "CIFAR-100", "Tiny-ImageNet"], 
@@ -238,7 +240,7 @@ if __name__ == '__main__':
     elif args.dtype == "float32":
         torch.set_default_dtype(torch.float32)
     else:
-        raise "Wrong dtype in configuration -> " + args.dtype
+        raise ValueError("Wrong dtype in configuration -> " + args.dtype)
     
     torch.manual_seed(args.seed)
     random.seed(args.seed)

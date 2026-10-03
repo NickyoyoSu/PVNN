@@ -95,9 +95,8 @@ def getArguments():
     parser.add_argument('--clip_features', default=1.0, type=float,
                         help="Clipping parameter for hybrid HNNs proposed by Guo et al. (2022)")
 
-    # Add new argument
-    parser.add_argument('--mlr_type', default='b', type=str, choices=['b', 'g', 'pv', 'lorentz', 'klein', 'hnn++', 'hnn','euclidean_custom'],
-                        help="Type of MLR head to use.")
+    parser.add_argument('--mlr_type', default='b', type=str, choices=['b', 'g', 'hnn++'],
+                        help="MLR head for the Poincare decoder: b = Busemann, g = Ganea et al. (2018), hnn++ = unidirectional MLR (Shimizu et al., 2021). Ignored for other decoders.")
 
     # Dataset settings
     parser.add_argument('--dataset', default='CIFAR-100', type=str,
@@ -286,7 +285,7 @@ if __name__ == '__main__':
     elif args.dtype == "float32":
         torch.set_default_dtype(torch.float32)
     else:
-        raise "Wrong dtype in configuration -> " + args.dtype
+        raise ValueError("Wrong dtype in configuration -> " + args.dtype)
 
     torch.manual_seed(args.seed)
     random.seed(args.seed)

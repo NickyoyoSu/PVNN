@@ -114,7 +114,7 @@ def select_model(img_dim, num_classes, args):
         dec_type=args.decoder_manifold,
         enc_kwargs=enc_args,
         dec_kwargs=dec_args,
-        mlr_type=args.mlr_type  # Add this
+        mlr_type=args.mlr_type
     )
 
     return model
@@ -133,7 +133,7 @@ def select_optimizer(model, args):
     elif args.optimizer == "SGD":
         optimizer = torch.optim.SGD(model_parameters, lr=args.lr, weight_decay=args.weight_decay, momentum=0.9, nesterov=True)
     else:
-        raise "Optimizer not found. Wrong optimizer in configuration... -> " + args.model
+        raise ValueError("Optimizer not found. Wrong optimizer in configuration... -> " + args.optimizer)
 
     lr_scheduler = None
     if args.use_lr_scheduler:
@@ -280,7 +280,7 @@ def select_dataset(args, validation_split=False):
         num_classes = 200
 
     else:
-        raise "Selected dataset '{}' not available.".format(args.dataset)
+        raise ValueError("Selected dataset '{}' not available.".format(args.dataset))
     
     # Dataloader
     train_loader = DataLoader(train_set, 

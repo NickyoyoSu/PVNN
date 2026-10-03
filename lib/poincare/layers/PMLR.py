@@ -74,7 +74,7 @@ class BusemannPoincareMLR(nn.Module):
         d = input.shape[1]
         input = torch.reshape(input, (-1, self.feat_dim))
         point = self.ball.expmap0(self.point)    
-        distances = torch.zeros_like(torch.empty(input.shape[0], self.num_outcome), device="cuda:0", requires_grad=False)
+        distances = torch.zeros(input.shape[0], self.num_outcome, device=input.device, dtype=input.dtype)
         for i in range(self.num_outcome):
             point_i = point[i]
             tangent_i = self.tangent[i] 
