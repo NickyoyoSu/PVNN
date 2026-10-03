@@ -8,11 +8,10 @@ from torch.utils.data import DataLoader, TensorDataset
 
 WORKING_DIR = os.path.realpath(os.path.dirname(__file__))
 PROJECT_ROOT = os.path.realpath(os.path.join(WORKING_DIR, "..", ".."))
-os.chdir(WORKING_DIR)
 
-for path in (WORKING_DIR, PROJECT_ROOT):
+for path in (PROJECT_ROOT, WORKING_DIR):
     if path not in sys.path:
-        sys.path.append(path)
+        sys.path.insert(0, path)
 
 from lib.geoopt.optim import RiemannianAdam
 from lib.data_loader import get_dataset

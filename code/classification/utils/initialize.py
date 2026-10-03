@@ -198,10 +198,10 @@ def select_dataset(args, validation_split=False):
             transforms.Resize((32,32), antialias=None)
         ])
 
-        train_set = datasets.MNIST('data', train=True, download=True, transform=train_transform)
+        train_set = datasets.MNIST(str(DATA_ROOT), train=True, download=True, transform=train_transform)
         if validation_split:
             train_set, val_set = torch.utils.data.random_split(train_set, [50000, 10000], generator=torch.Generator().manual_seed(1))
-        test_set = datasets.MNIST('data', train=False, download=True, transform=test_transform)
+        test_set = datasets.MNIST(str(DATA_ROOT), train=False, download=True, transform=test_transform)
 
         img_dim = [1, 32, 32]
         num_classes = 10
@@ -219,10 +219,10 @@ def select_dataset(args, validation_split=False):
             transforms.Normalize((0.5074, 0.4867, 0.4411), (0.267, 0.256, 0.276)),
         ])
 
-        train_set = datasets.CIFAR10('data', train=True, download=True, transform=train_transform)
+        train_set = datasets.CIFAR10(str(DATA_ROOT), train=True, download=True, transform=train_transform)
         if validation_split:
             train_set, val_set = torch.utils.data.random_split(train_set, [40000, 10000], generator=torch.Generator().manual_seed(1))
-        test_set = datasets.CIFAR10('data', train=False, download=True, transform=test_transform)
+        test_set = datasets.CIFAR10(str(DATA_ROOT), train=False, download=True, transform=test_transform)
 
         img_dim = [3, 32, 32]
         num_classes = 10
@@ -240,10 +240,10 @@ def select_dataset(args, validation_split=False):
             transforms.Normalize((0.5074, 0.4867, 0.4411), (0.267, 0.256, 0.276)),
         ])
 
-        train_set = datasets.CIFAR100('data', train=True, download=True, transform=train_transform)
+        train_set = datasets.CIFAR100(str(DATA_ROOT), train=True, download=True, transform=train_transform)
         if validation_split:
             train_set, val_set = torch.utils.data.random_split(train_set, [40000, 10000], generator=torch.Generator().manual_seed(1))
-        test_set = datasets.CIFAR100('data', train=False, download=True, transform=test_transform)
+        test_set = datasets.CIFAR100(str(DATA_ROOT), train=False, download=True, transform=test_transform)
 
         img_dim = [3, 32, 32]
         num_classes = 100

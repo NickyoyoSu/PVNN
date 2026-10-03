@@ -1,11 +1,10 @@
 # -----------------------------------------------------
-# Ensure imports resolve relative to this 6.2 package
+# Make `utils`/`models` (this folder) and `lib` (repo root) importable from any working directory
 import os
 import sys
 
 working_dir = os.path.realpath(os.path.dirname(__file__))
 project_root = os.path.realpath(os.path.join(working_dir, "..", ".."))
-os.chdir(working_dir)
 
 if working_dir not in sys.path:
     sys.path.insert(0, working_dir)
@@ -296,6 +295,6 @@ if __name__ == '__main__':
     if args.output_dir is not None:
         if not os.path.exists(args.output_dir):
             print("Create missing output directory...")
-            os.mkdir(args.output_dir)
+            os.makedirs(args.output_dir)
 
     main(args)

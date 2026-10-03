@@ -1,9 +1,9 @@
-# python train.py -c configs/HCNN_SingleK_TEB.txt
+# python code/gene/train.py -c code/gene/configs/HCNN_SingleK_TEB.txt
 
 
 # Output settings
 run_name = TEB_lines_hyperbolic_single_k
-output_dir = output
+output_dir = output/gene
 data_path = code/gene/data
 benchmark = TEB
 

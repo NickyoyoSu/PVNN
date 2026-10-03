@@ -1,11 +1,10 @@
 # -----------------------------------------------------
-# Ensure imports resolve relative to this 6.2 package
+# Make `utils`/`models` (this folder) and `lib` (repo root) importable from any working directory
 import os
 import sys
 
 working_dir = os.path.realpath(os.path.dirname(__file__))
 project_root = os.path.realpath(os.path.join(working_dir, "..", ".."))
-os.chdir(working_dir)
 
 if working_dir not in sys.path:
     sys.path.insert(0, working_dir)
@@ -136,7 +135,7 @@ def main(args):
         print("Visualizing embedding space of model...")
         if args.output_dir is not None:
             if not os.path.exists(args.output_dir):
-                os.mkdir(args.output_dir)
+                os.makedirs(args.output_dir)
             output_path = os.path.join(args.output_dir, "embeddings.png")
         else:
             output_path = "embeddings.png"

@@ -1,14 +1,14 @@
-# python code/classification/train.py -c classification/config/P-ResNet18.txt
+# python code/classification/train.py -c code/classification/config/P-ResNet18.txt
 
 # Output settings
 exp_name = P-ResNet18
-#output_dir = classification/output
+#output_dir = output/classification
 
 # General settings
 device = cuda:0
 dtype = float32
 seed = 1
-#load_checkpoint = classification/output/P-ResNet18.pth
+#load_checkpoint = output/classification/P-ResNet18.pth
 
 # General training hyperparameters
 num_epochs = 200

@@ -13,11 +13,10 @@ import torch.optim as optim
 
 WORKING_DIR = os.path.realpath(os.path.dirname(__file__))
 PROJECT_ROOT = os.path.realpath(os.path.join(WORKING_DIR, "..", ".."))
-os.chdir(WORKING_DIR)
 
-for path in (WORKING_DIR, PROJECT_ROOT):
+for path in (PROJECT_ROOT, WORKING_DIR):
     if path not in sys.path:
-        sys.path.append(path)
+        sys.path.insert(0, path)
 
 from utils.initialize import select_model, select_optimizer, load_checkpoint
 from utils.data_utils import select_dataset
