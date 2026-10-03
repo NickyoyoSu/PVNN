@@ -1,32 +1,12 @@
-# Graph Learning (PVNN) Experiments
+# Graph learning (Section 6.3)
 
-This folder is for the Section 6.3 graph learning main experiments.
-
-## Structure
-
-- `configs/` baseline configs extracted from the original experiments
-- `../data/` dataset root (place raw files here)
-- `lib/` data loaders and utilities
-- `models/` manifolds and model definitions
-- `train.py` main training entry
-
-## Data layout
-
-Create subfolders under the repo root `data/`:
-
-- `data/cora/`
-- `data/pubmed/`
-- `data/airport/`
-- `data/disease_nc/` and `data/disease_lp/`
-
-The file formats are the same as the original loader expects.
-
-## Run
-
-From `graph/`:
+Node classification on Disease, Airport, PubMed and Cora. Node features are fed to the model as i.i.d. samples, without using the graph structure (Appendix C.3).
 
 ```bash
-python train.py
+# from the repository root
+python code/graph/train.py
 ```
 
-Adjust datasets and flags inside `train.py` as needed.
+- `train.py` is the training entry point. It holds the experiment setup in `main()`: datasets, models, the per-dataset hyperparameters of Appendix C.3, and the PV layer variants.
+- `models/geometric_models.py` defines the two-layer models: `pvnn`, `hnn`, `hnn++`, `lnn`, `knn` and `fc`.
+- The data loaders are in `lib/data_loader.py`. The datasets are in the repository-level `data/` folder.
