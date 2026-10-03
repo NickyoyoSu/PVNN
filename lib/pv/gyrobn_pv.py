@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import math
-from .PV_monifold import PVManifold
+from .manifold import PVManifold
 
 
 class GyroBNPV(nn.Module):
@@ -170,7 +170,7 @@ class GyroBNPV(nn.Module):
         last_applied_step_norm = 0.0
         while iters < safety_cap:
             # Vectorized log_map(mean, x_i) for all i
-            # PV_monifold interface: log_map(u, w)
+            # PVManifold interface: log_map(u, w)
             log_maps = self.manifold.log_map(mean, x_flat)
             avg_log_map = log_maps.mean(dim=0, keepdim=True)
             # Step damping (configurable)
@@ -181,7 +181,7 @@ class GyroBNPV(nn.Module):
             last_applied_step_norm = float(torch.linalg.norm(step).item())
 
             # Update mean via exponential map
-            # PV_monifold interface: exp_map(u, v)
+            # PVManifold interface: exp_map(u, v)
             new_mean = self.manifold.exp_map(mean, step)
 
             # Convergence check (Euclidean norm)
@@ -201,7 +201,7 @@ class GyroBNPV(nn.Module):
         """
         x_flat = x.view(-1, x.shape[-1])  # (N, d)
         # Compute distance in one pass via broadcasting
-        # PV_monifold interface: dist(x, y)
+        # PVManifold interface: dist(x, y)
         d = self.manifold.dist(mean.view(1, -1), x_flat)
         variance = (d * d).mean()
         return torch.nan_to_num(variance, nan=0.0).clamp_min(1e-8).view(1)
@@ -437,37 +437,3 @@ class PVGyroBN1d(GyroBNPV):
         y = y_reshaped.view(B, L, C).permute(0, 2, 1).contiguous()
         
         return y
-
-
-# Corrected PVBatchNorm1d using proper GyroBN implementation
-class PVBatchNorm1d(nn.Module):
-    def __init__(self, manifold: PVManifold, num_features: int, use_gyrobn: bool = True):
-        super().__init__()
-        self.manifold = manifold
-        self.use_gyrobn = use_gyrobn
-
-        if use_gyrobn:
-            # Use corrected GyroBN
-            self.gyrobn = PVGyroBN1d(manifold, num_features)
-        else:
-            # Use traditional Euclidean BN
-            self.bn = nn.BatchNorm1d(num_features)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # x: (B, C, L) on PV
-        if self.use_gyrobn:
-            # Use corrected GyroBN for batch norm on PV manifold
-            return self.gyrobn(x)
-        else:
-            # Use traditional Euclidean BN (via tangent-space mapping)
-            B, C, L = x.shape
-            xt = self.manifold.logmap0(x.permute(0, 2, 1).contiguous().view(-1, C))
-            xt = self.bn(xt.view(B, L, C).permute(0, 2, 1))
-            y = self.manifold.expmap0(xt.permute(0, 2, 1).contiguous().view(-1, C)).view(B, L, C).permute(0, 2, 1)
-            return y 
-
-
-
-
-
-            

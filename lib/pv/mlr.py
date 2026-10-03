@@ -1,11 +1,11 @@
 import torch
 import torch.nn as nn
 
-from .PV_monifold import PVManifoldMLR as _PVManifoldMLR
+from .layers import PVManifoldMLR as _PVManifoldMLR
 
 
 def _c_from_manifold(manifold) -> float:
-    """Get positive curvature c from manifold for PV_monifold.PVManifoldMLR."""
+    """Get positive curvature c from manifold for layers.PVManifoldMLR."""
     if hasattr(manifold, "c"):
         try:
             return float(manifold.c)
@@ -26,7 +26,7 @@ def _c_from_manifold(manifold) -> float:
 
 
 class PVManifoldMLR(nn.Module):
-    """PV MLR head compatible with PV_monifold (z, r) closed-form."""
+    """PV MLR head that reads its curvature from a manifold instance."""
     def __init__(self, manifold, in_features, num_classes):
         super().__init__()
         c_val = _c_from_manifold(manifold)

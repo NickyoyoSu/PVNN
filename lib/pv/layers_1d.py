@@ -4,7 +4,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 import typing as T
 
-from .PV_monifold import PVManifold, PVFC
+from .manifold import PVManifold
+from .layers import PVFC
 from .gyrobn_pv import PVGyroBN1d
 
 
@@ -144,7 +145,7 @@ class PVAct1d(nn.Module):
 class PVBatchNorm1d(nn.Module):
     """
     PV BN with compatible interface:
-    - use_gyrobn=True: use PVGyroBN1d from gyrobn_pv, inner manifold from PV_monifold.PVManifold(c)
+    - use_gyrobn=True: use PVGyroBN1d from gyrobn_pv, inner manifold from manifold.PVManifold(c)
     - use_gyrobn=False: tangent-space Euclidean BN
     Interface compatible with blocks_1d extended params (unused ignored)
     """
