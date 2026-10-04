@@ -171,7 +171,8 @@ class PVHyperbolicCNN(nn.Module):
 
         self.output_length = length
         self.num_layers = num_layers
-        self.manifolds = nn.ModuleList([PVManifold(c=k, learnable=learnable_k) for _ in range(self.num_layers + 1)])
+        self.manifolds = nn.ModuleList([PVManifold(c=k, learnable=learnable_k)])
+        self.manifolds.extend([self.manifolds[0] for _ in range(self.num_layers)])
 
         # Input projection: 5(one-hot) -> model_dim, compatible with block channels_sizes[1]
         self.input_proj = PVConv1d(self.manifolds[0].c, in_channels=5, out_channels=model_dim, kernel_size=1, padding=0)
