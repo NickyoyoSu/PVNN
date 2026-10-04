@@ -13,6 +13,7 @@ Most hyperbolic neural networks are built on the Poincaré ball or the hyperbolo
 ```
 assets/                   poster
 code/
+  stability/              numerical stability of PV vs Poincaré / Lorentz operators (Section 6.1)
   classification/         image classification with a PV MLR head      (Section 6.2)
   graph/                  node classification on graph benchmarks       (Section 6.3)
   gene/                   genomic sequence classification on TEB        (Section 6.4)
@@ -43,6 +44,22 @@ pip install -r requirements.txt
 ```
 
 Python 3.10 or newer is required. The code was tested with Python 3.11 and PyTorch 2.2. All commands below are run from the repository root.
+
+## Numerical stability (Section 6.1)
+
+```bash
+python code/stability/numerical_test.py --device cpu
+```
+
+The script compares PV with the Poincaré ball and the Lorentz model in FP32 and FP64, plus FP16 on GPU. It reports:
+
+- threshold sweeps for scalar multiplication r ⊗ x, giving failure rates as r grows
+- one-shot scalar multiplication and addition diagnostics
+- exp/log round-trip errors
+- a precision sweep
+- gradient magnitudes across radii
+
+The options are `--kappa`, `--d` and `--batch`. The script uses the self-contained operator implementations in `code/stability/`.
 
 ## Image classification (Section 6.2)
 
@@ -95,7 +112,7 @@ Download the TEB datasets as described in the [HGE repository](https://github.co
 python code/gene/train.py -c code/gene/configs/PV_TEB.txt
 ```
 
-`PV_TEB.txt` trains PVCNN on hAT-Ac. For other datasets, set `--dataset_name` and the maximum sequence length `--length`. For example, our SINEs run used `--dataset_name sines --length 500 --k 0.225`. The baseline configs `CNN_TEB.txt` (Euclidean CNN) and `HCNN_SingleK_TEB.txt` / `HCNN_MultiK_TEB.txt` (Lorentz HCNN) follow Khan et al. (2025).
+`PV_TEB.txt` trains PVCNN on hAT-Ac. PVCNN uses PV GyroBN and a single curvature shared by all layers (Appendix C.4). For other datasets, set `--dataset_name` and the maximum sequence length `--length`. For example, our SINEs run used `--dataset_name sines --length 500 --k 0.225`. The baseline configs `CNN_TEB.txt` (Euclidean CNN) and `HCNN_SingleK_TEB.txt` / `HCNN_MultiK_TEB.txt` (Lorentz HCNN) follow Khan et al. (2025).
 
 ## Citation
 
@@ -108,6 +125,10 @@ python code/gene/train.py -c code/gene/configs/PV_TEB.txt
   url       = {https://openreview.net/forum?id=UDIYU1X3vC}
 }
 ```
+
+## License
+
+This project is released under the [MIT License](LICENSE). Third-party code keeps its original license; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ## Acknowledgements
 
