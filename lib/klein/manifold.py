@@ -175,33 +175,6 @@ class KleinManifold(torch.nn.Module):
 class KleinManifoldMLR(nn.Module):
     def __init__(self, manifold, in_features, num_classes, bias=True):
         super().__init__()
-        self.manifold = manifold
-        self.in_features = in_features
-        self.out_features = num_classes
-        self.min_norm = 1e-15
-        
-        self.a = nn.Parameter(torch.zeros(num_classes,))
-        self.z = nn.Parameter(F.pad(torch.zeros(num_classes, in_features-1), pad=(1,0), value=1))
-        
-        if bias:
-            self.bias = nn.Parameter(torch.Tensor(num_classes))
-            self.has_bias = True
-        else:
-            self.register_parameter('bias', None)
-            self.has_bias = False
-            
-        self.init_weights()
-    
-    def init_weights(self):
-        stdv = 1. / math.sqrt(self.z.size(1))
-        nn.init.uniform_(self.z, -stdv, stdv)
-        nn.init.uniform_(self.a, -stdv, stdv)
-        if self.has_bias:
-            nn.init.uniform_(self.bias, -stdv, stdv)
-    
-class KleinManifoldMLR(nn.Module):
-    def __init__(self, manifold, in_features, num_classes, bias=True):
-        super().__init__()
         self.manifold = manifold                             
         self.W = nn.Parameter(torch.empty(num_classes, in_features))
         if bias:

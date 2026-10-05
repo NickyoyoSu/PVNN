@@ -3,7 +3,7 @@ from typing import Tuple, Any, Union, List
 import functools
 import operator
 import torch
-import geoopt
+from lib import geoopt
 
 
 max_norm = 85

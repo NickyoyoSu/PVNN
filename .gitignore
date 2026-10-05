@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+.DS_Store
+.vscode/
+.idea/
+
+# experiment outputs and checkpoints
+output/
+*.pth
+
+# downloaded / user-provided datasets
+code/classification/data/*
+!code/classification/data/.gitkeep
+code/gene/data/*
+!code/gene/data/.gitkeep

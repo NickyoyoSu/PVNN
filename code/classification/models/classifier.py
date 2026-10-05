@@ -14,7 +14,7 @@ from lib.models.resnet import (
     Lorentz_resnet50
 )
 
-from lib.poincare.hnn_manifold import HyperbolicMLR, HNNPlusPlusMLR
+from lib.poincare.hnn_manifold import HNNPlusPlusMLR
 from lib.klein.manifold import KleinManifold, KleinManifoldMLR
 from lib.Euclidean.mlr import EuclideanMLR
 from lib.pv.manifold import PVManifold
@@ -57,7 +57,7 @@ class ResNetClassifier(nn.Module):
             dec_type:str="lorentz",
             enc_kwargs={},
             dec_kwargs={},
-            mlr_type='b'  # Add this
+            mlr_type='b'
         ):
         super(ResNetClassifier, self).__init__()
 
@@ -82,8 +82,6 @@ class ResNetClassifier(nn.Module):
             if mlr_type == 'b':
                 # (feat_dim, num_outcome, c, ball)
                 self.decoder = BusemannPoincareMLR(dec_kwargs['embed_dim'], dec_kwargs['num_classes'], dec_kwargs["k"], self.dec_manifold)
-            elif mlr_type in ['hnn']:
-                self.decoder = HyperbolicMLR(self.dec_manifold, dec_kwargs['embed_dim'], dec_kwargs['num_classes'])
             elif mlr_type == 'g':
                 self.decoder = GaneaPoincareMLR(self.dec_manifold, dec_kwargs['embed_dim'], dec_kwargs['num_classes'])
             elif mlr_type == 'hnn++':
@@ -95,7 +93,7 @@ class ResNetClassifier(nn.Module):
             # PVManifoldMLR expects curvature c (float), not a manifold instance
             self.decoder = PVManifoldMLR(dec_kwargs["k"], dec_kwargs['embed_dim'], dec_kwargs['num_classes'])
         elif dec_type == "klein":
-            self.dec_manifold = KleinManifold(k=dec_kwargs["k"], learnable=dec_kwargs['learn_k'])
+            self.dec_manifold = KleinManifold(c=dec_kwargs["k"])
             self.decoder = KleinManifoldMLR(self.dec_manifold, dec_kwargs['embed_dim'], dec_kwargs['num_classes'])
         elif dec_type == "euclidean_custom":
             # Use the custom Euclidean MLR head
@@ -109,7 +107,10 @@ class ResNetClassifier(nn.Module):
             if self.dec_type in ["poincare", "klein"]:
                 x_norm = torch.norm(x, dim=-1, keepdim=True)
                 x = torch.minimum(torch.ones_like(x_norm), self.clip_r / x_norm.clamp_min(1e-15)) * x
-                x = self.dec_manifold.expmap0(x)
+                if self.dec_type == "klein":
+                    x = self.dec_manifold.expmap0(x, self.dec_manifold.c)
+                else:
+                    x = self.dec_manifold.expmap0(x)
             elif self.dec_type == "lorentz":
                 x = self.dec_manifold.expmap0(F.pad(x, pad=(1,0), value=0))
             elif self.dec_type == "euclidean":

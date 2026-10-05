@@ -1,14 +1,14 @@
-# python code/classification/train.py -c classification/config/EP-ResNet18.txt
+# python code/classification/train.py -c code/classification/config/EP-ResNet18.txt
 
 # Output settings
 exp_name = EP-ResNet18
-#output_dir = classification/output
+#output_dir = output/classification
 
 # General settings
 device = cuda:0
 dtype = float32
 seed = 1
-#load_checkpoint = classification/output/EP-ResNet18.pth
+#load_checkpoint = output/classification/EP-ResNet18.pth
 
 # General training hyperparameters
 num_epochs = 200
@@ -28,6 +28,7 @@ num_layers = 18
 embedding_dim = 512
 encoder_manifold = euclidean
 decoder_manifold = poincare
+mlr_type = b # Busemann MLR
 
 # Manifold settings
 # learn_k = True

@@ -1,0 +1,13 @@
+# Tested with Python 3.11, PyTorch 2.2.0, torchvision 0.17.0 (Python >= 3.10 required)
+torch>=2.0
+torchvision>=0.15
+numpy
+scipy
+scikit-learn
+pandas
+networkx
+ConfigArgParse
+tqdm
+matplotlib
+Pillow
+umap-learn  # optional: embedding plots in code/classification/test.py (--output_dir)

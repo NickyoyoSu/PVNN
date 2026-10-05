@@ -1,16 +1,15 @@
 # -----------------------------------------------------
-# Ensure imports resolve relative to this 6.2 package
+# Make `utils`/`models` (this folder) and `lib` (repo root) importable from any working directory
 import os
 import sys
 
 working_dir = os.path.realpath(os.path.dirname(__file__))
 project_root = os.path.realpath(os.path.join(working_dir, "..", ".."))
-os.chdir(working_dir)
 
 if working_dir not in sys.path:
-    sys.path.append(working_dir)
+    sys.path.insert(0, working_dir)
 if project_root not in sys.path:
-    sys.path.append(project_root)
+    sys.path.insert(0, project_root)
 # -----------------------------------------------------
 
 import torch
@@ -25,7 +24,6 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm
 
 from utils.initialize import select_dataset, select_model, load_model_checkpoint
-from lib.utils.visualize import visualize_embeddings
 from train import evaluate
 
 from lib.utils.utils import AverageMeter, accuracy
@@ -74,7 +72,7 @@ def getArguments():
                         help = "Dimensionality of classification embedding space (could be expanded by ResNet)")
     parser.add_argument('--encoder_manifold', default='lorentz', type=str, choices=["euclidean", "lorentz"], 
                         help = "Select conv model encoder manifold.")
-    parser.add_argument('--decoder_manifold', default='lorentz', type=str, choices=["euclidean", "lorentz", "poincare"], 
+    parser.add_argument('--decoder_manifold', default='lorentz', type=str, choices=["euclidean", "euclidean_custom", "lorentz", "poincare", "pv", "klein"], 
                         help = "Select conv model decoder manifold.")
     
 
@@ -87,6 +85,8 @@ def getArguments():
                         help = "Initial curvature of hyperbolic geometry in decoder (geoopt.K=-1/K).")
     parser.add_argument('--clip_features', default=1.0, type=float, 
                         help = "Clipping parameter for hybrid HNNs proposed by Guo et al. (2022)")
+    parser.add_argument('--mlr_type', default='b', type=str, choices=['b', 'g', 'hnn++'],
+                        help="MLR head for the Poincare decoder: b = Busemann, g = Ganea et al. (2018), hnn++ = unidirectional MLR (Shimizu et al., 2021). Ignored for other decoders.")
     
     # Dataset settings
     parser.add_argument('--dataset', default='CIFAR-100', type=str, choices=["MNIST", "CIFAR-10", "CIFAR-100", "Tiny-ImageNet"], 
@@ -137,7 +137,7 @@ def main(args):
         print("Visualizing embedding space of model...")
         if args.output_dir is not None:
             if not os.path.exists(args.output_dir):
-                os.mkdir(args.output_dir)
+                os.makedirs(args.output_dir)
             output_path = os.path.join(args.output_dir, "embeddings.png")
         else:
             output_path = "embeddings.png"
@@ -155,6 +155,8 @@ def main(args):
 
 @torch.no_grad()
 def save_embeddings(model, data_loader, output_path, device):
+    from lib.utils.visualize import visualize_embeddings
+
     fig = visualize_embeddings(model, data_loader, device, model.module.dec_manifold, model.module.dec_type=="poincare")
     print(f"Saving embeddings to {output_path}...")
     fig.savefig(output_path)
@@ -238,7 +240,7 @@ if __name__ == '__main__':
     elif args.dtype == "float32":
         torch.set_default_dtype(torch.float32)
     else:
-        raise "Wrong dtype in configuration -> " + args.dtype
+        raise ValueError("Wrong dtype in configuration -> " + args.dtype)
     
     torch.manual_seed(args.seed)
     random.seed(args.seed)

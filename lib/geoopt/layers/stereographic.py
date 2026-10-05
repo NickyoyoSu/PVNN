@@ -1,5 +1,5 @@
 import torch
-import geoopt
+from lib import geoopt
 
 
 class Distance2StereographicHyperplanes(torch.nn.Module):

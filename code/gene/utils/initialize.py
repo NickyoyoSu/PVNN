@@ -84,7 +84,7 @@ def select_optimizer(model, args):
     elif args.optimizer == "SGD":
         optimizer = torch.optim.SGD(model_parameters, lr=args.lr, weight_decay=args.weight_decay, momentum=0.9, nesterov=True)
     else:
-        raise "Optimizer not found. Wrong optimizer in configuration... -> " + args.model
+        raise ValueError("Optimizer not found. Wrong optimizer in configuration... -> " + args.optimizer)
 
     lr_scheduler = None
     if args.use_lr_scheduler:
