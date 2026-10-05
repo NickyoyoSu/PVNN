@@ -71,7 +71,7 @@ python code/classification/train.py -c code/classification/config/PV-ResNet18.tx
 
 | Config | Classification head |
 | --- | --- |
-| `PV-ResNet18.txt` | PV MLR, c = 0.15 (Appendix C.2) |
+| `PV-ResNet18.txt` | PV MLR, c = 0.15 |
 | `EP-ResNet18.txt` | Poincaré MLR. `mlr_type`: `b` Busemann (default), `g` Ganea et al. (2018), `hnn++` Shimizu et al. (2021) |
 | `EL-ResNet18.txt` | Lorentz MLR (Bdeir et al., 2024) |
 | `E-ResNet18.txt` | Euclidean linear layer |
@@ -112,7 +112,7 @@ Download the TEB datasets as described in the [HGE repository](https://github.co
 python code/gene/train.py -c code/gene/configs/PV_TEB.txt
 ```
 
-`PV_TEB.txt` trains PVCNN on hAT-Ac. PVCNN uses PV GyroBN and a single curvature shared by all layers (Appendix C.4). For other datasets, set `--dataset_name` and the maximum sequence length `--length`. For example, our SINEs run used `--dataset_name sines --length 500 --k 0.225`. The baseline configs `CNN_TEB.txt` (Euclidean CNN) and `HCNN_SingleK_TEB.txt` / `HCNN_MultiK_TEB.txt` (Lorentz HCNN) follow Khan et al. (2025).
+`PV_TEB.txt` trains PVCNN on hAT-Ac. PVCNN uses PV tangent batch normalization and a single curvature shared by all layers (Section 6.4 and Appendix C.4). For other datasets, set `--dataset_name` and the maximum sequence length `--length`. For example, our SINEs run used `--dataset_name sines --length 500 --k 0.225`. The baseline configs `CNN_TEB.txt` (Euclidean CNN) and `HCNN_SingleK_TEB.txt` / `HCNN_MultiK_TEB.txt` (Lorentz HCNN) follow Khan et al. (2025).
 
 ## Citation
 
